@@ -4,9 +4,9 @@ spring:
   profiles:
     active: ${SPRING_PROFILES_ACTIVE:dev}
   datasource:
-    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/bd_tontine}
-    username: ${DATABASE_USER:oservices}
-    password: "Services@2025*!"
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:bd_tontine}
+    username: ${DB_USER:oservices}
+    password: ${DB_PASSWORD:Services@2025*!}
     driver-class-name: org.postgresql.Driver
   jpa:
     open-in-view: false
