@@ -16,4 +16,5 @@ public class AuthResponse {
     private RoleType role;
     private Long agenceId;
     private String agenceNom;
+    private boolean mustChangePassword;
 }

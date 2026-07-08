@@ -7,6 +7,7 @@ import com.tontinemarche.repository.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.CommandLineRunner;
+import org.springframework.core.annotation.Order;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -15,6 +16,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 
 @Component
+@Order(2)
 @RequiredArgsConstructor
 @Slf4j
 public class DataInitializer implements CommandLineRunner {
@@ -30,21 +32,13 @@ public class DataInitializer implements CommandLineRunner {
     @Override
     @Transactional
     public void run(String... args) {
-        if (utilisateurRepository.count() > 0) {
+        // Le super administrateur est géré par SuperAdminInitializer.
+        // On se base sur les agences pour ne seeder les données de démo qu'une seule fois.
+        if (agenceRepository.count() > 0) {
             return;
         }
 
         log.info("Initialisation des données de démonstration...");
-
-        Utilisateur superAdmin = utilisateurRepository.save(Utilisateur.builder()
-                .username("admin")
-                .password(passwordEncoder.encode("admin123"))
-                .nomComplet("Super Administrateur")
-                .email("oliveservicespro@gmail.com")
-                .telephone("+22370000000")
-                .role(RoleType.SUPER_ADMIN)
-                .statut(StatutEntity.ACTIF)
-                .build());
 
         Agence bko = agenceRepository.save(Agence.builder()
                 .code("BKO")
@@ -207,7 +201,7 @@ public class DataInitializer implements CommandLineRunner {
                 .statut(StatutEntity.ACTIF)
                 .build());
 
-        log.info("Données initialisées. Super admin: admin / admin123 (id={})", superAdmin.getId());
+        log.info("Données de démonstration initialisées.");
     }
 
     private void createClient(Agence agence, Marche marche, Quartier quartier, Agent agent,

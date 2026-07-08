@@ -65,6 +65,11 @@ app:
   otp:
     expiration-minutes: ${OTP_EXPIRATION_MINUTES:10}
     reset-token-minutes: ${OTP_RESET_TOKEN_MINUTES:15}
+  super-admin:
+    username: "${SUPER_ADMIN_USERNAME:admin}"
+    password: "${SUPER_ADMIN_PASSWORD:*@Secret@*2018}"
+    email: "${SUPER_ADMIN_EMAIL:dmoussa1807@gmail.com}"
+    nom-complet: "${SUPER_ADMIN_NAME:Super Administrateur}"
 
 springdoc:
   api-docs:

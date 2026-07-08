@@ -40,4 +40,9 @@ public class Utilisateur extends BaseEntity {
     @Column(nullable = false)
     @Builder.Default
     private StatutEntity statut = StatutEntity.ACTIF;
+
+    /** Force l'utilisateur à changer son mot de passe à la prochaine connexion. */
+    @Column(nullable = false, columnDefinition = "boolean default false")
+    @Builder.Default
+    private boolean mustChangePassword = false;
 }

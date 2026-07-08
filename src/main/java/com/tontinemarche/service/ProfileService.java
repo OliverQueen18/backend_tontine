@@ -61,6 +61,7 @@ public class ProfileService {
         }
 
         user.setPassword(passwordEncoder.encode(request.getNewPassword()));
+        user.setMustChangePassword(false);
         utilisateurRepository.save(user);
 
         auditService.log("MODIFICATION", "Profil", user.getUsername(), "Changement de mot de passe",

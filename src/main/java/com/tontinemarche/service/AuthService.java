@@ -75,6 +75,7 @@ public class AuthService {
                 .role(user.getRole())
                 .agenceId(user.getAgence() != null ? user.getAgence().getId() : null)
                 .agenceNom(user.getAgence() != null ? user.getAgence().getNom() : null)
+                .mustChangePassword(user.isMustChangePassword())
                 .build();
     }
 
@@ -102,6 +103,7 @@ public class AuthService {
                 .role(user.getRole())
                 .agenceId(user.getAgence() != null ? user.getAgence().getId() : null)
                 .agenceNom(user.getAgence() != null ? user.getAgence().getNom() : null)
+                .mustChangePassword(user.isMustChangePassword())
                 .build();
     }
 }
