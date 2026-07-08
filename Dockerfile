@@ -16,7 +16,7 @@ RUN apk add --no-cache wget \
     && addgroup -S spring \
     && adduser -S spring -G spring
 
-COPY --from=build /app/target/pieml-backend-*.jar app.jar
+COPY --from=build /app/target/backend-tontine-*.jar app.jar
 RUN chown spring:spring app.jar
 
 USER spring:spring

@@ -28,8 +28,8 @@ pipeline {
     }
 
     environment {
-        APP_NAME     = 'pieml-backend'
-        DOCKER_IMAGE = 'oliverqueen18/pieml-backend'
+        APP_NAME     = 'backend-tontine '
+        DOCKER_IMAGE = 'oliverqueen18/backend-tontine'
         DOCKER_TAG   = "${BUILD_NUMBER}"
     }
 
@@ -88,10 +88,10 @@ pipeline {
 
     post {
         success {
-            echo "Pipeline PIEML backend reussi (${DOCKER_IMAGE}:${DOCKER_TAG})"
+            echo "Pipeline TONTINE backend reussi (${DOCKER_IMAGE}:${DOCKER_TAG})"
         }
         failure {
-            echo 'Pipeline PIEML backend echoue'
+            echo 'Pipeline TONTINE backend echoue'
         }
         always {
             cleanWs()
