@@ -3,13 +3,16 @@ package com.tontinemarche.service;
 import com.tontinemarche.exception.ApiException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.nio.file.AccessDeniedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
 
@@ -32,31 +35,44 @@ public class MediaStorageService {
         this.uploadDir = Path.of(uploadDir).toAbsolutePath().normalize();
         try {
             Files.createDirectories(this.uploadDir);
+            // Vérifie tôt que le dossier est réellement inscriptible (volume Docker souvent root).
+            Path probe = this.uploadDir.resolve(".write-test");
+            Files.writeString(probe, "ok");
+            Files.deleteIfExists(probe);
+            log.info("Dossier uploads prêt : {}", this.uploadDir);
+        } catch (AccessDeniedException e) {
+            throw new IllegalStateException(
+                    "Dossier uploads non inscriptible (" + this.uploadDir
+                            + "). Vérifiez les permissions du volume / UPLOAD_DIR.", e);
         } catch (IOException e) {
-            throw new IllegalStateException("Impossible de créer le dossier uploads", e);
+            throw new IllegalStateException("Impossible de créer le dossier uploads: " + this.uploadDir, e);
         }
     }
 
     public String store(MultipartFile file) {
-        if (file == null || file.isEmpty()) {
-            throw ApiException.badRequest("Fichier vide");
-        }
-        String contentType = file.getContentType();
-        if (contentType == null || !ALLOWED_TYPES.contains(contentType)) {
-            throw ApiException.badRequest("Type de fichier non autorisé (JPEG, PNG, WebP, GIF, SVG, PDF)");
+        validateNotEmpty(file);
+        String contentType = resolveContentType(file);
+        if (!ALLOWED_TYPES.contains(contentType)) {
+            throw ApiException.badRequest(
+                    "Type de fichier non autorisé (" + contentType + "). Formats : JPEG, PNG, WebP, GIF, SVG, PDF");
         }
         return storeWithType(file, contentType);
     }
 
     public String storeDocument(MultipartFile file) {
-        if (file == null || file.isEmpty()) {
-            throw ApiException.badRequest("Fichier vide");
-        }
-        String contentType = file.getContentType();
-        if (contentType == null || !DOCUMENT_TYPES.contains(contentType)) {
-            throw ApiException.badRequest("Document non autorisé (JPEG, PNG, WebP ou PDF)");
+        validateNotEmpty(file);
+        String contentType = resolveContentType(file);
+        if (!DOCUMENT_TYPES.contains(contentType)) {
+            throw ApiException.badRequest(
+                    "Document non autorisé (" + contentType + "). Formats : JPEG, PNG, WebP ou PDF");
         }
         return storeWithType(file, contentType);
+    }
+
+    private void validateNotEmpty(MultipartFile file) {
+        if (file == null || file.isEmpty()) {
+            throw ApiException.badRequest("Fichier vide ou manquant");
+        }
     }
 
     private String storeWithType(MultipartFile file, String contentType) {
@@ -68,8 +84,13 @@ public class MediaStorageService {
         }
         try {
             Files.copy(file.getInputStream(), target, StandardCopyOption.REPLACE_EXISTING);
+        } catch (AccessDeniedException e) {
+            log.error("Permission refusée sur {}", uploadDir, e);
+            throw new ApiException(
+                    "Impossible d'enregistrer le fichier (permissions du dossier uploads). Contactez l'administrateur.",
+                    HttpStatus.INTERNAL_SERVER_ERROR);
         } catch (IOException e) {
-            log.error("Erreur upload média", e);
+            log.error("Erreur upload média vers {}", target, e);
             throw ApiException.badRequest("Erreur lors de l'enregistrement du fichier");
         }
         return "/api/public/uploads/" + filename;
@@ -84,6 +105,34 @@ public class MediaStorageService {
             throw ApiException.notFound("Fichier introuvable");
         }
         return resolved;
+    }
+
+    /**
+     * Les navigateurs envoient parfois un Content-Type vide ou application/octet-stream.
+     * On déduit alors le type depuis l'extension du nom de fichier.
+     */
+    private String resolveContentType(MultipartFile file) {
+        String contentType = file.getContentType();
+        if (contentType != null) {
+            contentType = contentType.toLowerCase(Locale.ROOT).split(";")[0].trim();
+            if ("image/jpg".equals(contentType)) {
+                contentType = "image/jpeg";
+            }
+            if (ALLOWED_TYPES.contains(contentType) || DOCUMENT_TYPES.contains(contentType)) {
+                return contentType;
+            }
+        }
+        String name = file.getOriginalFilename();
+        if (name != null) {
+            String lower = name.toLowerCase(Locale.ROOT);
+            if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
+            if (lower.endsWith(".png")) return "image/png";
+            if (lower.endsWith(".webp")) return "image/webp";
+            if (lower.endsWith(".gif")) return "image/gif";
+            if (lower.endsWith(".svg")) return "image/svg+xml";
+            if (lower.endsWith(".pdf")) return "application/pdf";
+        }
+        return contentType != null ? contentType : "application/octet-stream";
     }
 
     private String extensionFromContentType(String contentType) {

@@ -12,19 +12,23 @@ RUN mvn clean package -DskipTests -B
 FROM eclipse-temurin:21-jre-alpine
 WORKDIR /app
 
-RUN apk add --no-cache wget \
+RUN apk add --no-cache wget su-exec \
     && addgroup -S spring \
-    && adduser -S spring -G spring
+    && adduser -S spring -G spring \
+    && mkdir -p /app/uploads \
+    && chown -R spring:spring /app
 
-COPY --from=build /app/target/backend-tontine-*.jar app.jar
-RUN chown spring:spring app.jar
-
-USER spring:spring
+COPY --from=build /app/target/backend-tontine-*.jar /app/app.jar
+COPY docker-entrypoint.sh /app/docker-entrypoint.sh
+RUN chmod +x /app/docker-entrypoint.sh \
+    && chown spring:spring /app/app.jar /app/docker-entrypoint.sh
 
 ENV SERVER_PORT=6000
+ENV UPLOAD_DIR=/app/uploads
 EXPOSE 6000
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://localhost:6000/actuator/health || exit 1
+HEALTHCHECK --interval=30s --timeout=5s --start-period=90s --retries=3 \
+  CMD wget --no-verbose --tries=1 --spider http://localhost:6000/api/public/content || exit 1
 
-ENTRYPOINT ["java", "-jar", "app.jar"]
+# Démarrage en root pour chown du volume, puis drop vers spring (voir entrypoint).
+ENTRYPOINT ["/app/docker-entrypoint.sh"]
