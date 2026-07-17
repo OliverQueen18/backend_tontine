@@ -31,4 +31,5 @@ public class CollecteDto {
     private LocalDateTime dateHeure;
     private String signatureClient;
     private boolean validee;
+    private boolean annulee;
 }

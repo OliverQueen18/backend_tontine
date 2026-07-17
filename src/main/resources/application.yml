@@ -52,6 +52,9 @@ app:
   commission:
     default-rate: 0.10
     admin-rate: 0.05
+    # Mettre à true UNE FOIS au redémarrage pour appliquer la nouvelle grille
+    # par défaut à toutes les agences, puis remettre à false.
+    apply-default-grille-on-startup: ${APPLY_DEFAULT_GRILLE:false}
   mail:
     enabled: ${MAIL_ENABLED:true}
     from: ${MAIL_FROM:${MAIL_USERNAME:oliveservicespro@gmail.com}}

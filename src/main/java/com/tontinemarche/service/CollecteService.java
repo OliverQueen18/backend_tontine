@@ -3,14 +3,14 @@ package com.tontinemarche.service;
 import com.tontinemarche.domain.entity.Agent;
 import com.tontinemarche.domain.entity.Client;
 import com.tontinemarche.domain.entity.Collecte;
+import com.tontinemarche.domain.entity.Utilisateur;
 import com.tontinemarche.domain.enums.CategorieMouvement;
+import com.tontinemarche.domain.enums.RoleType;
 import com.tontinemarche.domain.enums.StatutEntity;
 import com.tontinemarche.domain.enums.TypeMouvement;
 import com.tontinemarche.dto.CollecteDto;
 import com.tontinemarche.exception.ApiException;
 import com.tontinemarche.mapper.EntityMapper;
-import com.tontinemarche.domain.entity.Utilisateur;
-import com.tontinemarche.domain.enums.RoleType;
 import com.tontinemarche.repository.AgentRepository;
 import com.tontinemarche.repository.ClientRepository;
 import com.tontinemarche.repository.CollecteRepository;
@@ -89,9 +89,6 @@ public class CollecteService {
         if (client.getAgent() == null) {
             throw ApiException.badRequest("Client non affecté à un agent");
         }
-        if (dto.getSignatureClient() == null || dto.getSignatureClient().isBlank()) {
-            throw ApiException.badRequest("La signature électronique est obligatoire");
-        }
 
         Agent agent = resolveAgent(dto, client);
         LocalDateTime now = LocalDateTime.now();
@@ -118,6 +115,8 @@ public class CollecteService {
             throw ApiException.badRequest("Le montant collecté doit être positif");
         }
 
+        boolean signee = dto.getSignatureClient() != null && !dto.getSignatureClient().isBlank();
+
         Collecte collecte = Collecte.builder()
                 .numeroRecu(numeroRecu)
                 .client(client)
@@ -128,8 +127,9 @@ public class CollecteService {
                 .nombreJoursPayes(nombreJours)
                 .dateCollecte(now.toLocalDate())
                 .dateHeure(now)
-                .signatureClient(dto.getSignatureClient())
-                .validee(true)
+                .signatureClient(signee ? dto.getSignatureClient() : null)
+                .validee(signee)
+                .annulee(false)
                 .build();
 
         collecte = collecteRepository.save(collecte);
@@ -157,8 +157,8 @@ public class CollecteService {
                 "Collecte " + numeroRecu + " : " + montantRecu + " FCFA (" + nombreJours
                         + " j) pour le client " + client.getCode() + " (" + client.getNomComplet()
                         + ") par l'agent " + agent.getNomComplet() + ".",
-                com.tontinemarche.domain.enums.RoleType.ADMIN_AGENCE,
-                com.tontinemarche.domain.enums.RoleType.SUPER_ADMIN
+                RoleType.ADMIN_AGENCE,
+                RoleType.SUPER_ADMIN
         );
         if (agent.getUtilisateur() != null) {
             notificationService.notifyUsers(
@@ -167,13 +167,137 @@ public class CollecteService {
                     "Collecte enregistrée",
                     "Votre collecte " + numeroRecu + " de " + montantRecu
                             + " FCFA (" + nombreJours + " j) pour " + client.getNomComplet()
-                            + " a été validée."
+                            + " a été " + (signee ? "validée." : "enregistrée (signature en attente).")
             );
         }
 
-        notificationService.sendCollecteReceiptToClient(client, collecte, agent);
+        if (signee) {
+            notificationService.sendCollecteReceiptToClient(client, collecte, agent);
+        }
 
         return EntityMapper.toDto(collecte);
+    }
+
+    @Transactional
+    public CollecteDto signer(Long id, String signatureClient) {
+        if (signatureClient == null || signatureClient.isBlank()) {
+            throw ApiException.badRequest("La signature électronique est obligatoire");
+        }
+        Collecte collecte = getCollecte(id);
+        assertCanManage(collecte);
+        if (collecte.isAnnulee()) {
+            throw ApiException.badRequest("Impossible de signer une collecte annulée");
+        }
+        if (collecte.getSignatureClient() != null && !collecte.getSignatureClient().isBlank()) {
+            throw ApiException.badRequest("Cette collecte est déjà signée");
+        }
+
+        collecte.setSignatureClient(signatureClient);
+        collecte.setValidee(true);
+        collecte = collecteRepository.save(collecte);
+
+        auditService.log("COLLECTE_SIGNATURE", "Collecte", collecte.getNumeroRecu(),
+                "Signature ajoutée — " + collecte.getClient().getCode(),
+                collecte.getAgence().getId());
+
+        notificationService.sendCollecteReceiptToClient(collecte.getClient(), collecte, collecte.getAgent());
+
+        return EntityMapper.toDto(collecte);
+    }
+
+    @Transactional
+    public CollecteDto annuler(Long id) {
+        Collecte collecte = getCollecte(id);
+        assertCanManage(collecte);
+        if (collecte.isAnnulee()) {
+            throw ApiException.badRequest("Cette collecte est déjà annulée");
+        }
+
+        Client client = collecte.getClient();
+        BigDecimal montant = collecte.getMontantRecu();
+        BigDecimal solde = client.getSoldeEpargne() != null ? client.getSoldeEpargne() : BigDecimal.ZERO;
+        if (solde.compareTo(montant) < 0) {
+            throw ApiException.badRequest(
+                    "Impossible d'annuler : le solde du client (" + solde
+                            + " FCFA) est inférieur au montant de la collecte"
+            );
+        }
+
+        client.setSoldeEpargne(solde.subtract(montant));
+        clientRepository.save(client);
+
+        try {
+            caisseService.enregistrerMouvement(
+                    collecte.getAgence().getId(),
+                    TypeMouvement.SORTIE,
+                    CategorieMouvement.COLLECTE,
+                    montant,
+                    "Annulation collecte " + client.getCode() + " — " + collecte.getNumeroRecu(),
+                    "ANNUL-" + collecte.getNumeroRecu()
+            );
+        } catch (ApiException e) {
+            auditService.log("COLLECTE_ANNULATION_CAISSE", "Collecte", collecte.getNumeroRecu(),
+                    "Annulation sans mouvement caisse : " + e.getMessage(),
+                    collecte.getAgence().getId());
+        }
+
+        collecte.setAnnulee(true);
+        collecte.setValidee(false);
+        collecte = collecteRepository.save(collecte);
+
+        auditService.log("COLLECTE_ANNULATION", "Collecte", collecte.getNumeroRecu(),
+                "Annulation " + montant + " FCFA — " + client.getCode(),
+                collecte.getAgence().getId());
+
+        notificationService.notifyAgenceStaff(
+                collecte.getAgence().getId(),
+                "COLLECTE",
+                "Collecte annulée",
+                "La collecte " + collecte.getNumeroRecu() + " (" + montant + " FCFA) pour "
+                        + client.getNomComplet() + " a été annulée.",
+                RoleType.ADMIN_AGENCE,
+                RoleType.SUPER_ADMIN
+        );
+
+        return EntityMapper.toDto(collecte);
+    }
+
+    private Collecte getCollecte(Long id) {
+        return collecteRepository.findById(id)
+                .orElseThrow(() -> ApiException.notFound("Collecte introuvable"));
+    }
+
+    private void assertCanManage(Collecte collecte) {
+        UserPrincipal principal = currentPrincipal();
+        if (principal == null) {
+            throw ApiException.forbidden("Non authentifié");
+        }
+        if (principal.getRole() == RoleType.SUPER_ADMIN) {
+            return;
+        }
+        if (principal.getRole() == RoleType.ADMIN_AGENCE) {
+            if (principal.getAgenceId() == null
+                    || !principal.getAgenceId().equals(collecte.getAgence().getId())) {
+                throw ApiException.forbidden("Accès limité à votre agence");
+            }
+            return;
+        }
+        if (principal.getRole() == RoleType.AGENT) {
+            Agent agent = agentRepository.findByUtilisateurId(principal.getId()).orElse(null);
+            if (agent == null || !agent.getId().equals(collecte.getAgent().getId())) {
+                throw ApiException.forbidden("Vous ne pouvez gérer que vos propres collectes");
+            }
+            return;
+        }
+        throw ApiException.forbidden("Accès refusé");
+    }
+
+    private UserPrincipal currentPrincipal() {
+        var auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth != null && auth.getPrincipal() instanceof UserPrincipal principal) {
+            return principal;
+        }
+        return null;
     }
 
     private Agent resolveAgent(CollecteDto dto, Client client) {

@@ -2,6 +2,8 @@ package com.tontinemarche.repository;
 
 import com.tontinemarche.domain.entity.Client;
 import com.tontinemarche.domain.enums.StatutEntity;
+import org.springframework.data.jpa.repository.EntityGraph;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -14,6 +16,12 @@ public interface ClientRepository extends JpaRepository<Client, Long> {
     List<Client> findByAgenceId(Long agenceId);
     List<Client> findByAgentId(Long agentId);
     List<Client> findByAgentIdAndStatut(Long agentId, StatutEntity statut);
+
+    @EntityGraph(attributePaths = "agence")
+    List<Client> findByAgenceIdAndStatutAndSupprimeFalse(Long agenceId, StatutEntity statut);
+
+    @EntityGraph(attributePaths = "agence")
+    List<Client> findByStatutAndSupprimeFalse(StatutEntity statut);
     long countByAgenceId(Long agenceId);
     long countByAgentId(Long agentId);
     long countByStatut(StatutEntity statut);

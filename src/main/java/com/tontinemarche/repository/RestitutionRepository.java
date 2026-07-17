@@ -17,6 +17,8 @@ public interface RestitutionRepository extends JpaRepository<Restitution, Long> 
     List<Restitution> findByAgenceIdOrderByDateHeureDesc(Long agenceId);
     List<Restitution> findByClient_Agent_IdOrderByDateHeureDesc(Long agentId);
     List<Restitution> findByClient_Agent_IdAndValideeFalseOrderByDateHeureDesc(Long agentId);
+    List<Restitution> findByAgenceIdAndValideeFalseOrderByDateHeureDesc(Long agenceId);
+    List<Restitution> findByValideeFalseOrderByDateHeureDesc();
     boolean existsByClientIdAndValideeFalse(Long clientId);
 
     @Query("SELECT COALESCE(SUM(r.commission), 0) FROM Restitution r WHERE r.dateHeure BETWEEN :debut AND :fin")

@@ -45,4 +45,16 @@ public class CollecteController {
     public CollecteDto enregistrer(@Valid @RequestBody CollecteDto dto) {
         return collecteService.enregistrer(dto);
     }
+
+    @PatchMapping("/{id}/signer")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN_AGENCE', 'AGENT')")
+    public CollecteDto signer(@PathVariable Long id, @RequestBody java.util.Map<String, String> payload) {
+        return collecteService.signer(id, payload != null ? payload.get("signatureClient") : null);
+    }
+
+    @PostMapping("/{id}/annuler")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN_AGENCE', 'AGENT')")
+    public CollecteDto annuler(@PathVariable Long id) {
+        return collecteService.annuler(id);
+    }
 }

@@ -44,10 +44,15 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                             new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
                     authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
                     SecurityContextHolder.getContext().setAuthentication(authToken);
+                } else {
+                    org.slf4j.LoggerFactory.getLogger(JwtAuthenticationFilter.class)
+                            .warn("JWT expiré ou invalide pour {} sur {}", username, request.getRequestURI());
                 }
             }
-        } catch (Exception ignored) {
+        } catch (Exception ex) {
             // Invalid token: leave context unauthenticated
+            org.slf4j.LoggerFactory.getLogger(JwtAuthenticationFilter.class)
+                    .warn("JWT rejeté sur {} : {}", request.getRequestURI(), ex.getMessage());
         }
 
         filterChain.doFilter(request, response);

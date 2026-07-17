@@ -307,12 +307,16 @@ public class ClientService {
     }
 
     private BigDecimal computeCommissionEstimee(Client client) {
-        if (client.getSoldeEpargne() == null || client.getSoldeEpargne().signum() <= 0) {
+        if (client.getMontantJournalier() == null || client.getMontantJournalier().signum() <= 0) {
             return BigDecimal.ZERO;
         }
         try {
+            BigDecimal total = client.getSoldeEpargne() != null ? client.getSoldeEpargne() : BigDecimal.ZERO;
             return commissionGrilleService
-                    .calculerCommission(client.getAgence().getId(), client.getSoldeEpargne())
+                    .calculerCommissionRestitution(
+                            client.getAgence().getId(),
+                            client.getMontantJournalier(),
+                            total)
                     .montantCommission();
         } catch (Exception e) {
             return BigDecimal.ZERO;

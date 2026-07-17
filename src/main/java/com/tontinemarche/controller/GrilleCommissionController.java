@@ -30,4 +30,9 @@ public class GrilleCommissionController {
     ) {
         return commissionGrilleService.saveGrille(agenceId, request.getLignes());
     }
+
+    @PostMapping("/reinitialiser")
+    public List<GrilleCommissionLigneDto> reinitialiser(@PathVariable Long agenceId) {
+        return commissionGrilleService.resetToDefaultGrille(agenceId);
+    }
 }

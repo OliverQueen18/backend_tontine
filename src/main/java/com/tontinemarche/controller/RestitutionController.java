@@ -19,23 +19,25 @@ public class RestitutionController {
     private final RestitutionService restitutionService;
 
     @GetMapping
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN_AGENCE', 'AGENT', 'CAISSIER')")
     public List<RestitutionDto> findAll(@RequestParam(required = false) Long agenceId) {
         return restitutionService.findAll(agenceId);
     }
 
     @GetMapping("/calculer/{clientId}")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN_AGENCE', 'AGENT', 'CAISSIER')")
     public Map<String, Object> calculer(@PathVariable Long clientId) {
         return restitutionService.calculer(clientId);
     }
 
     @GetMapping("/en-attente-signature")
-    @PreAuthorize("hasAnyRole('AGENT', 'ADMIN_AGENCE')")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'AGENT', 'ADMIN_AGENCE')")
     public List<RestitutionDto> enAttenteSignature() {
         return restitutionService.enAttenteSignature();
     }
 
     @PostMapping
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'CAISSIER')")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN_AGENCE', 'CAISSIER')")
     public RestitutionDto effectuer(@Valid @RequestBody RestitutionDto dto) {
         return restitutionService.effectuer(dto);
     }
@@ -61,5 +63,17 @@ public class RestitutionController {
         BigDecimal commission = payload.get("commission") != null
                 ? new BigDecimal(payload.get("commission").toString()) : null;
         return restitutionService.finaliserSignature(id, signature, commission);
+    }
+
+    @GetMapping("/{id}")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN_AGENCE', 'AGENT', 'CAISSIER')")
+    public RestitutionDto findById(@PathVariable Long id) {
+        return restitutionService.findById(id);
+    }
+
+    @PostMapping("/{id}/renvoyer-recu")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN_AGENCE', 'AGENT', 'CAISSIER')")
+    public RestitutionDto renvoyerRecu(@PathVariable Long id) {
+        return restitutionService.renvoyerRecu(id);
     }
 }

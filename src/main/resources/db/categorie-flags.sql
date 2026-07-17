@@ -16,3 +16,6 @@ END $$;
 
 ALTER TABLE platform_settings ADD COLUMN IF NOT EXISTS taux_commission_admin_defaut NUMERIC(8,4) DEFAULT 0.0500;
 UPDATE platform_settings SET taux_commission_admin_defaut = 0.0500 WHERE taux_commission_admin_defaut IS NULL;
+
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS supprime BOOLEAN NOT NULL DEFAULT false;
+UPDATE clients SET supprime = false WHERE supprime IS NULL;

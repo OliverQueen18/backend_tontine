@@ -100,13 +100,17 @@ public class NotificationService {
     }
 
     public void sendRestitutionNoticeToClient(Client client, Restitution restitution, Agent agent) {
+        sendRestitutionReceiptToClient(client, restitution, agent);
+    }
+
+    public void sendRestitutionReceiptToClient(Client client, Restitution restitution, Agent agent) {
         if (client.getEmail() == null || client.getEmail().isBlank()) {
-            log.debug("Aucun email pour le client {} — avis restitution {} non envoyé",
+            log.debug("Aucun email pour le client {} — reçu restitution {} non envoyé",
                     client.getCode(), restitution.getNumeroRecu());
             return;
         }
-        String subject = "[Tontine Marché] Restitution " + restitution.getNumeroRecu();
-        emailService.send(client.getEmail(), subject, buildRestitutionNoticeHtml(client, restitution, agent));
+        String subject = "[Tontine Marché] Reçu de restitution " + restitution.getNumeroRecu();
+        emailService.send(client.getEmail(), subject, buildRestitutionReceiptHtml(client, restitution, agent));
     }
 
     public void sendCollecteReceiptToClient(Client client, Collecte collecte, Agent agent) {
@@ -255,29 +259,35 @@ public class NotificationService {
                 """.formatted(escape(nom), escape(titre), escape(message).replace("\n", "<br/>"));
     }
 
-    private String buildRestitutionNoticeHtml(Client client, Restitution restitution, Agent agent) {
+    private String buildRestitutionReceiptHtml(Client client, Restitution restitution, Agent agent) {
         DateTimeFormatter dtf = DateTimeFormatter.ofPattern("dd/MM/yyyy 'à' HH:mm");
         String dateHeure = restitution.getDateHeure() != null
                 ? restitution.getDateHeure().format(dtf)
                 : "";
         var agenceEntity = client.getAgence() != null ? client.getAgence() : restitution.getAgence();
-        String agentNom = agent != null ? orDash(agent.getNomComplet()) : "votre agent collecteur";
+        String marche = client.getMarche() != null ? client.getMarche().getNom() : "—";
+        String agentNom = agent != null ? orDash(agent.getNomComplet()) : "—";
+        String agentCode = agent != null ? orDash(agent.getCode()) : "—";
         String agentTel = agent != null ? orDash(agent.getTelephone()) : "—";
 
         return """
                 <div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#0f172a">
                   <div style="background:#0b1f3a;color:#fff;padding:16px 20px;border-radius:12px 12px 0 0">
                     <strong>Tontine Marché</strong>
-                    <div style="font-size:13px;margin-top:4px;opacity:0.9">Avis de restitution</div>
+                    <div style="font-size:13px;margin-top:4px;opacity:0.9">Reçu de restitution</div>
                   </div>
                   <div style="border:1px solid #e2e8f0;border-top:none;padding:20px;border-radius:0 0 12px 12px">
                     %s
                     <p>Bonjour %s,</p>
-                    <p style="line-height:1.6">Votre restitution a été effectuée par la caisse. Voici le détail :</p>
+                    <p style="line-height:1.6">
+                      Votre restitution a été finalisée. Conservez ce message comme justificatif.
+                    </p>
                     <table style="width:100%%;border-collapse:collapse;margin:16px 0;font-size:14px">
                       <tr><td style="padding:8px 0;color:#64748b">N° reçu</td><td style="padding:8px 0;text-align:right"><strong>%s</strong></td></tr>
                       <tr><td style="padding:8px 0;color:#64748b">Code client</td><td style="padding:8px 0;text-align:right">%s</td></tr>
                       <tr><td style="padding:8px 0;color:#64748b">Date</td><td style="padding:8px 0;text-align:right">%s</td></tr>
+                      <tr><td style="padding:8px 0;color:#64748b">Marché</td><td style="padding:8px 0;text-align:right">%s</td></tr>
+                      <tr><td style="padding:8px 0;color:#64748b">Mise journalière</td><td style="padding:8px 0;text-align:right">%s FCFA</td></tr>
                       <tr><td style="padding:8px 0;color:#64748b">Total collecté</td><td style="padding:8px 0;text-align:right">%s FCFA</td></tr>
                       <tr><td style="padding:8px 0;color:#64748b">Commission</td><td style="padding:8px 0;text-align:right">%s FCFA</td></tr>
                       <tr style="border-top:1px solid #e2e8f0">
@@ -285,12 +295,30 @@ public class NotificationService {
                         <td style="padding:12px 0;text-align:right;color:#166534"><strong>%s FCFA</strong></td>
                       </tr>
                     </table>
-                    <p style="line-height:1.6;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px">
-                      <strong>Prochaine étape :</strong> %s vous contactera pour recueillir votre signature
-                      et finaliser la restitution.
+
+                    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;margin:16px 0">
+                      <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;margin-bottom:10px">Agence</div>
+                      <table style="width:100%%;border-collapse:collapse;font-size:14px">
+                        <tr><td style="padding:4px 0;color:#64748b">Nom</td><td style="padding:4px 0;text-align:right"><strong>%s</strong></td></tr>
+                        <tr><td style="padding:4px 0;color:#64748b">Téléphone</td><td style="padding:4px 0;text-align:right">%s</td></tr>
+                        <tr><td style="padding:4px 0;color:#64748b">Adresse</td><td style="padding:4px 0;text-align:right">%s</td></tr>
+                      </table>
+                    </div>
+
+                    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;margin:16px 0">
+                      <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;margin-bottom:10px">Agent collecteur</div>
+                      <table style="width:100%%;border-collapse:collapse;font-size:14px">
+                        <tr><td style="padding:4px 0;color:#64748b">Nom</td><td style="padding:4px 0;text-align:right"><strong>%s</strong></td></tr>
+                        <tr><td style="padding:4px 0;color:#64748b">Code</td><td style="padding:4px 0;text-align:right">%s</td></tr>
+                        <tr><td style="padding:4px 0;color:#64748b">Téléphone</td><td style="padding:4px 0;text-align:right">%s</td></tr>
+                      </table>
+                    </div>
+
+                    <p style="line-height:1.6;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:14px 16px;color:#166534">
+                      Restitution validée avec signature du client. Merci de votre confiance.
                     </p>
                     <p style="color:#64748b;font-size:13px;margin-top:24px">
-                      Agence : %s — Tél. %s
+                      Pour toute question, contactez votre agent ou votre agence aux coordonnées ci-dessus.
                     </p>
                   </div>
                 </div>
@@ -300,11 +328,16 @@ public class NotificationService {
                 escape(restitution.getNumeroRecu()),
                 escape(client.getCode()),
                 escape(dateHeure),
+                escape(marche),
+                escape(formatDecimal(client.getMontantJournalier())),
                 escape(formatDecimal(restitution.getTotalCollecte())),
                 escape(formatDecimal(restitution.getCommission())),
                 escape(formatDecimal(restitution.getMontantNet())),
-                escape(agentNom),
                 escape(orDash(agenceEntity != null ? agenceEntity.getNom() : null)),
+                escape(orDash(agenceEntity != null ? agenceEntity.getTelephone() : null)),
+                escape(orDash(agenceEntity != null ? agenceEntity.getAdresse() : null)),
+                escape(agentNom),
+                escape(agentCode),
                 escape(agentTel)
         );
     }

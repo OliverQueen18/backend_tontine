@@ -61,10 +61,27 @@ public class CommissionGrilleService {
         return saved.stream().map(this::toDto).toList();
     }
 
-    @Transactional(readOnly = true)
-    public CommissionResult calculerCommission(Long agenceId, BigDecimal totalCollecte) {
-        if (totalCollecte == null || totalCollecte.compareTo(BigDecimal.ZERO) < 0) {
-            totalCollecte = BigDecimal.ZERO;
+    /**
+     * Commission de restitution : la tranche de grille se base sur le montant journalier (mise),
+     * pas sur le total collecté. Sans grille, le taux s'applique au total collecté.
+     */
+    @Transactional(readOnly = true, noRollbackFor = ApiException.class)
+    public CommissionResult calculerCommissionRestitution(Long agenceId,
+                                                          BigDecimal montantJournalier,
+                                                          BigDecimal totalCollecte) {
+        List<GrilleCommissionLigne> lignes = grilleRepository
+                .findByAgenceIdOrderByOrdreAscMontantMinAsc(agenceId);
+        if (!lignes.isEmpty()) {
+            BigDecimal base = montantJournalier != null ? montantJournalier : BigDecimal.ZERO;
+            return calculerCommission(agenceId, base);
+        }
+        return calculerCommission(agenceId, totalCollecte);
+    }
+
+    @Transactional(readOnly = true, noRollbackFor = ApiException.class)
+    public CommissionResult calculerCommission(Long agenceId, BigDecimal montantReference) {
+        if (montantReference == null || montantReference.compareTo(BigDecimal.ZERO) < 0) {
+            montantReference = BigDecimal.ZERO;
         }
 
         List<GrilleCommissionLigne> lignes = grilleRepository
@@ -72,7 +89,7 @@ public class CommissionGrilleService {
 
         if (!lignes.isEmpty()) {
             for (GrilleCommissionLigne ligne : lignes) {
-                if (matches(totalCollecte, ligne)) {
+                if (matches(montantReference, ligne)) {
                     return new CommissionResult(
                             ligne.getMontantCommission().setScale(0, RoundingMode.HALF_UP),
                             formatTranche(ligne),
@@ -80,14 +97,24 @@ public class CommissionGrilleService {
                     );
                 }
             }
+            // Montant au-delà de la dernière tranche plafonnée : on applique la dernière
+            // (évite de casser listes/simulateur si la grille n'a pas de « sans plafond »).
+            GrilleCommissionLigne last = lignes.get(lignes.size() - 1);
+            if (last.getMontantMax() != null && montantReference.compareTo(last.getMontantMax()) > 0) {
+                return new CommissionResult(
+                        last.getMontantCommission().setScale(0, RoundingMode.HALF_UP),
+                        formatTranche(last) + " (plafond étendu)",
+                        true
+                );
+            }
             throw ApiException.badRequest(
-                    "Aucune tranche de commission ne correspond au montant épargné : "
-                            + totalCollecte.stripTrailingZeros().toPlainString() + " FCFA");
+                    "Aucune tranche de commission ne correspond au montant : "
+                            + montantReference.stripTrailingZeros().toPlainString() + " FCFA");
         }
 
         Agence agence = getAgence(agenceId);
         BigDecimal taux = agence.getTauxCommission() != null ? agence.getTauxCommission() : new BigDecimal("0.10");
-        BigDecimal commission = totalCollecte.multiply(taux).setScale(0, RoundingMode.HALF_UP);
+        BigDecimal commission = montantReference.multiply(taux).setScale(0, RoundingMode.HALF_UP);
         return new CommissionResult(
                 commission,
                 "Taux " + taux.multiply(new BigDecimal("100")).stripTrailingZeros().toPlainString() + " %",
@@ -100,14 +127,33 @@ public class CommissionGrilleService {
         if (grilleRepository.countByAgenceId(agence.getId()) > 0) {
             return;
         }
-        BigDecimal taux = agence.getTauxCommission() != null ? agence.getTauxCommission() : new BigDecimal("0.10");
+        replaceWithDefaultGrille(agence);
+    }
 
+    /** Remplace toute la grille de l'agence par la grille par défaut métier. */
+    @Transactional
+    public void replaceWithDefaultGrille(Agence agence) {
+        grilleRepository.deleteByAgenceId(agence.getId());
         List<GrilleCommissionLigne> defaults = List.of(
-                ligne(agence, 0, new BigDecimal("50000"), pct(taux, new BigDecimal("25000")), 0),
-                ligne(agence, new BigDecimal("50001"), new BigDecimal("150000"), pct(taux, new BigDecimal("100000")), 1),
-                ligne(agence, new BigDecimal("150001"), null, pct(taux, new BigDecimal("200000")), 2)
+                ligne(agence, 0, new BigDecimal("500"), new BigDecimal("500"), 0),
+                ligne(agence, new BigDecimal("501"), new BigDecimal("1000"), new BigDecimal("1000"), 1),
+                ligne(agence, new BigDecimal("1001"), new BigDecimal("2000"), new BigDecimal("2000"), 2),
+                ligne(agence, new BigDecimal("2001"), new BigDecimal("5000"), new BigDecimal("5000"), 3),
+                ligne(agence, new BigDecimal("5001"), new BigDecimal("10000"), new BigDecimal("10000"), 4),
+                ligne(agence, new BigDecimal("10001"), new BigDecimal("20000"), new BigDecimal("20000"), 5),
+                ligne(agence, new BigDecimal("20001"), null, new BigDecimal("25000"), 6)
         );
         grilleRepository.saveAll(defaults);
+    }
+
+    @Transactional
+    public List<GrilleCommissionLigneDto> resetToDefaultGrille(Long agenceId) {
+        assertCanManage(agenceId);
+        Agence agence = getAgence(agenceId);
+        replaceWithDefaultGrille(agence);
+        auditService.log("REINITIALISATION", "GrilleCommission", agence.getCode(),
+                "Grille remise à la valeur par défaut", agenceId);
+        return findByAgence(agenceId);
     }
 
     private GrilleCommissionLigne ligne(Agence agence, Object min, BigDecimal max, BigDecimal commission, int ordre) {
@@ -119,10 +165,6 @@ public class CommissionGrilleService {
                 .montantCommission(commission)
                 .ordre(ordre)
                 .build();
-    }
-
-    private BigDecimal pct(BigDecimal taux, BigDecimal base) {
-        return base.multiply(taux).setScale(0, RoundingMode.HALF_UP);
     }
 
     private boolean matches(BigDecimal total, GrilleCommissionLigne ligne) {

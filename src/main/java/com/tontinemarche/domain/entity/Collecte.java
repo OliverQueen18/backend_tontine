@@ -57,4 +57,8 @@ public class Collecte extends BaseEntity {
     @Column(nullable = false)
     @Builder.Default
     private boolean validee = true;
+
+    @Column(nullable = false)
+    @Builder.Default
+    private boolean annulee = false;
 }

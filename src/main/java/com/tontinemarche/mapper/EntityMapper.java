@@ -106,17 +106,34 @@ public final class EntityMapper {
                 .dateHeure(c.getDateHeure())
                 .signatureClient(c.getSignatureClient())
                 .validee(c.isValidee())
+                .annulee(c.isAnnulee())
                 .build();
     }
 
     public static RestitutionDto toDto(Restitution r) {
+        var client = r.getClient();
+        var agence = r.getAgence() != null ? r.getAgence() : (client != null ? client.getAgence() : null);
+        var agent = client != null ? client.getAgent() : null;
+        var marche = client != null ? client.getMarche() : null;
         return RestitutionDto.builder()
                 .id(r.getId())
                 .numeroRecu(r.getNumeroRecu())
-                .clientId(r.getClient().getId())
-                .clientCode(r.getClient().getCode())
-                .clientNom(r.getClient().getNomComplet())
-                .agenceId(r.getAgence().getId())
+                .clientId(client != null ? client.getId() : null)
+                .clientCode(client != null ? client.getCode() : null)
+                .clientNom(client != null ? client.getNomComplet() : null)
+                .clientTelephone(client != null ? client.getTelephone() : null)
+                .clientEmail(client != null ? client.getEmail() : null)
+                .montantJournalier(client != null ? client.getMontantJournalier() : null)
+                .marcheNom(marche != null ? marche.getNom() : null)
+                .agenceId(agence != null ? agence.getId() : null)
+                .agenceNom(agence != null ? agence.getNom() : null)
+                .agenceTelephone(agence != null ? agence.getTelephone() : null)
+                .agenceEmail(agence != null ? agence.getEmail() : null)
+                .agenceAdresse(agence != null ? agence.getAdresse() : null)
+                .agenceVille(agence != null ? agence.getVille() : null)
+                .agentId(agent != null ? agent.getId() : null)
+                .agentNom(agent != null ? agent.getNomComplet() : null)
+                .agentTelephone(agent != null ? agent.getTelephone() : null)
                 .totalCollecte(r.getTotalCollecte())
                 .commission(r.getCommission())
                 .commissionCalculee(r.getCommissionCalculee())

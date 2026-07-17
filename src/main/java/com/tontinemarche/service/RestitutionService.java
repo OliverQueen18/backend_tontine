@@ -70,9 +70,31 @@ public class RestitutionService {
         if (principal == null) {
             throw ApiException.forbidden("Accès refusé");
         }
-        if (principal.getRole() != RoleType.AGENT && principal.getRole() != RoleType.ADMIN_AGENCE) {
+
+        // Super admin : toutes les restitutions en attente de signature
+        if (principal.getRole() == RoleType.SUPER_ADMIN) {
+            return restitutionRepository.findByValideeFalseOrderByDateHeureDesc()
+                    .stream()
+                    .map(EntityMapper::toDto)
+                    .toList();
+        }
+
+        if (principal.getRole() == RoleType.ADMIN_AGENCE) {
+            Long agenceId = principal.getAgenceId();
+            if (agenceId == null) {
+                throw ApiException.forbidden("Agence non définie pour cet utilisateur");
+            }
+            // Admin agence : file d'attente de toute l'agence (pas seulement son profil collecteur)
+            return restitutionRepository.findByAgenceIdAndValideeFalseOrderByDateHeureDesc(agenceId)
+                    .stream()
+                    .map(EntityMapper::toDto)
+                    .toList();
+        }
+
+        if (principal.getRole() != RoleType.AGENT) {
             throw ApiException.forbidden("Réservé aux agents collecteurs");
         }
+
         Agent agent = agentRepository.findByUtilisateurId(principal.getId())
                 .orElseThrow(() -> ApiException.forbidden("Profil collecteur introuvable"));
         return restitutionRepository.findByClient_Agent_IdAndValideeFalseOrderByDateHeureDesc(agent.getId())
@@ -90,34 +112,50 @@ public class RestitutionService {
         if (total == null) {
             total = BigDecimal.ZERO;
         }
-        var commissionCalc = commissionGrilleService.calculerCommission(client.getAgence().getId(), total);
+        var commissionCalc = commissionGrilleService.calculerCommissionRestitution(
+                client.getAgence().getId(),
+                client.getMontantJournalier(),
+                total
+        );
         BigDecimal commission = commissionCalc.montantCommission();
         BigDecimal net = total.subtract(commission);
+        BigDecimal mise = client.getMontantJournalier() != null ? client.getMontantJournalier() : BigDecimal.ZERO;
 
-        return Map.of(
-                "clientId", client.getId(),
-                "clientCode", client.getCode(),
-                "clientNom", client.getNomComplet(),
-                "totalCollecte", total,
-                "commission", commission,
-                "commissionCalculee", commission,
-                "montantNet", net,
-                "soldeEpargne", client.getSoldeEpargne(),
-                "trancheCommission", commissionCalc.trancheLabel(),
-                "modeCommission", commissionCalc.fromGrille() ? "GRILLE" : "TAUX"
-        );
+        Map<String, Object> result = new java.util.LinkedHashMap<>();
+        result.put("clientId", client.getId());
+        result.put("clientCode", client.getCode());
+        result.put("clientNom", client.getNomComplet());
+        result.put("totalCollecte", total);
+        result.put("montantJournalier", mise);
+        result.put("commission", commission);
+        result.put("commissionCalculee", commission);
+        result.put("montantNet", net);
+        result.put("soldeEpargne", client.getSoldeEpargne() != null ? client.getSoldeEpargne() : BigDecimal.ZERO);
+        result.put("trancheCommission", commissionCalc.trancheLabel());
+        result.put("modeCommission", commissionCalc.fromGrille() ? "GRILLE" : "TAUX");
+        return result;
     }
 
     @Transactional
     public RestitutionDto effectuer(RestitutionDto dto) {
         UserPrincipal principal = currentPrincipal();
         if (principal == null
-                || (principal.getRole() != RoleType.CAISSIER && principal.getRole() != RoleType.SUPER_ADMIN)) {
-            throw ApiException.forbidden("Seul le caissier peut effectuer une restitution");
+                || (principal.getRole() != RoleType.CAISSIER
+                && principal.getRole() != RoleType.SUPER_ADMIN
+                && principal.getRole() != RoleType.ADMIN_AGENCE)) {
+            throw ApiException.forbidden("Vous n'êtes pas autorisé à effectuer une restitution");
         }
 
         Client client = clientRepository.findById(dto.getClientId())
                 .orElseThrow(() -> ApiException.notFound("Client introuvable"));
+
+        if (principal.getRole() == RoleType.ADMIN_AGENCE || principal.getRole() == RoleType.CAISSIER) {
+            if (principal.getAgenceId() == null
+                    || client.getAgence() == null
+                    || !principal.getAgenceId().equals(client.getAgence().getId())) {
+                throw ApiException.forbidden("Accès limité aux clients de votre agence");
+            }
+        }
 
         if (client.getStatut() != StatutEntity.ACTIF) {
             throw ApiException.badRequest("Client inactif");
@@ -132,7 +170,10 @@ public class RestitutionService {
         }
 
         BigDecimal commission = commissionGrilleService
-                .calculerCommission(client.getAgence().getId(), total)
+                .calculerCommissionRestitution(
+                        client.getAgence().getId(),
+                        client.getMontantJournalier(),
+                        total)
                 .montantCommission();
         BigDecimal montantNet = total.subtract(commission);
 
@@ -225,7 +266,7 @@ public class RestitutionService {
                         + " FCFA, commission " + restitution.getCommission() + " FCFA");
 
         Agent agent = client.getAgent();
-        notificationService.sendRestitutionNoticeToClient(client, restitution, agent);
+        notificationService.sendRestitutionReceiptToClient(client, restitution, agent);
         notificationService.notifyAgenceStaff(
                 client.getAgence().getId(),
                 "RESTITUTION",
@@ -250,17 +291,80 @@ public class RestitutionService {
         return EntityMapper.toDto(restitution);
     }
 
+    @Transactional(readOnly = true)
+    public RestitutionDto findById(Long id) {
+        return EntityMapper.toDto(getAccessibleRestitution(id));
+    }
+
+    @Transactional
+    public RestitutionDto renvoyerRecu(Long id) {
+        Restitution restitution = getAccessibleRestitution(id);
+        if (!restitution.isValidee()) {
+            throw ApiException.badRequest("La restitution doit être finalisée avant d'envoyer le reçu");
+        }
+        Client client = restitution.getClient();
+        if (client.getEmail() == null || client.getEmail().isBlank()) {
+            throw ApiException.badRequest("Ce client n'a pas d'adresse e-mail");
+        }
+        notificationService.sendRestitutionReceiptToClient(client, restitution, client.getAgent());
+        auditService.log("RESTITUTION_RECU", "Restitution", restitution.getNumeroRecu(),
+                "Reçu renvoyé par e-mail à " + client.getEmail(),
+                restitution.getAgence().getId());
+        return EntityMapper.toDto(restitution);
+    }
+
+    private Restitution getAccessibleRestitution(Long restitutionId) {
+        UserPrincipal principal = currentPrincipal();
+        if (principal == null) {
+            throw ApiException.forbidden("Non authentifié");
+        }
+        Restitution restitution = restitutionRepository.findById(restitutionId)
+                .orElseThrow(() -> ApiException.notFound("Restitution introuvable"));
+
+        if (principal.getRole() == RoleType.SUPER_ADMIN) {
+            return restitution;
+        }
+        if (principal.getRole() == RoleType.ADMIN_AGENCE || principal.getRole() == RoleType.CAISSIER) {
+            if (principal.getAgenceId() == null
+                    || restitution.getAgence() == null
+                    || !principal.getAgenceId().equals(restitution.getAgence().getId())) {
+                throw ApiException.forbidden("Accès limité aux restitutions de votre agence");
+            }
+            return restitution;
+        }
+        if (principal.getRole() == RoleType.AGENT) {
+            Agent agent = agentRepository.findByUtilisateurId(principal.getId())
+                    .orElseThrow(() -> ApiException.forbidden("Profil collecteur introuvable"));
+            Client client = restitution.getClient();
+            if (client.getAgent() == null || !client.getAgent().getId().equals(agent.getId())) {
+                throw ApiException.forbidden("Ce client n'est pas dans votre portefeuille");
+            }
+            return restitution;
+        }
+        throw ApiException.forbidden("Accès refusé");
+    }
+
     private Restitution getRestitutionForCollecteur(Long restitutionId) {
         UserPrincipal principal = currentPrincipal();
         if (principal == null
                 || (principal.getRole() != RoleType.AGENT && principal.getRole() != RoleType.ADMIN_AGENCE)) {
-            throw ApiException.forbidden("Seul l'agent collecteur peut modifier cette restitution");
+            throw ApiException.forbidden("Seul l'agent collecteur ou l'admin agence peut modifier cette restitution");
         }
-        Agent agent = agentRepository.findByUtilisateurId(principal.getId())
-                .orElseThrow(() -> ApiException.forbidden("Profil collecteur introuvable"));
 
         Restitution restitution = restitutionRepository.findById(restitutionId)
                 .orElseThrow(() -> ApiException.notFound("Restitution introuvable"));
+
+        if (principal.getRole() == RoleType.ADMIN_AGENCE) {
+            if (principal.getAgenceId() == null
+                    || restitution.getAgence() == null
+                    || !principal.getAgenceId().equals(restitution.getAgence().getId())) {
+                throw ApiException.forbidden("Accès limité aux restitutions de votre agence");
+            }
+            return restitution;
+        }
+
+        Agent agent = agentRepository.findByUtilisateurId(principal.getId())
+                .orElseThrow(() -> ApiException.forbidden("Profil collecteur introuvable"));
 
         Client client = restitution.getClient();
         if (client.getAgent() == null || !client.getAgent().getId().equals(agent.getId())) {
