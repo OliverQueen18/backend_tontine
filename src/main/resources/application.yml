@@ -23,8 +23,8 @@ spring:
   mail:
     host: ${MAIL_HOST:smtp.gmail.com}
     port: ${MAIL_PORT:587}
-    username: ${MAIL_USERNAME:oliveservicespro@gmail.com}
-    password: "snnc vdsq hmal akrr"
+    username: ${MAIL_USERNAME:${SMTP_USER:oliveservicespro@gmail.com}}
+    password: ${MAIL_PASSWORD:${SMTP_PASSWORD:}}
     default-encoding: UTF-8
     properties:
       mail:
@@ -33,9 +33,9 @@ spring:
           starttls:
             enable: ${MAIL_SMTP_TLS:true}
             required: ${MAIL_SMTP_TLS_REQUIRED:true}
-          connectiontimeout: 5000
-          timeout: 5000
-          writetimeout: 5000
+          connectiontimeout: 10000
+          timeout: 10000
+          writetimeout: 10000
 
 server:
   port: ${SERVER_PORT:8081}
@@ -54,7 +54,7 @@ app:
     admin-rate: 0.05
   mail:
     enabled: ${MAIL_ENABLED:true}
-    from: ${MAIL_FROM:oliveservicespro@gmail.com}
+    from: ${MAIL_FROM:${MAIL_USERNAME:oliveservicespro@gmail.com}}
     from-name: ${MAIL_FROM_NAME:Tontine Marché}
   notification:
     depense-seuil: ${DEPENSE_SEUIL:50000}

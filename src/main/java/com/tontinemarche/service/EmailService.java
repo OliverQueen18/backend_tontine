@@ -28,7 +28,7 @@ public class EmailService {
     @Async
     public void send(String to, String subject, String htmlBody) {
         if (!enabled) {
-            log.debug("Envoi mail désactivé — destinataire={}", to);
+            log.warn("Envoi mail DÉSACTIVÉ (MAIL_ENABLED=false) — destinataire={} sujet={}", to, subject);
             return;
         }
         if (to == null || to.isBlank()) {

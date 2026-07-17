@@ -4,6 +4,8 @@ import com.tontinemarche.domain.entity.Agent;
 import com.tontinemarche.domain.enums.StatutEntity;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import java.util.List;
 import java.util.Optional;
@@ -17,4 +19,7 @@ public interface AgentRepository extends JpaRepository<Agent, Long> {
     List<Agent> findByAgenceIdAndStatut(Long agenceId, StatutEntity statut);
     long countByAgenceId(Long agenceId);
     long countByStatut(StatutEntity statut);
+
+    @Query("SELECT DISTINCT a FROM Agent a JOIN a.marches m WHERE m.id = :marcheId")
+    List<Agent> findByMarcheId(@Param("marcheId") Long marcheId);
 }

@@ -11,9 +11,9 @@ import com.tontinemarche.domain.enums.StatutEntity;
 import com.tontinemarche.exception.ApiException;
 import com.tontinemarche.repository.AgenceRepository;
 import com.tontinemarche.repository.AgentRepository;
+import com.tontinemarche.repository.ClientRepository;
 import com.tontinemarche.repository.MarcheRepository;
 import com.tontinemarche.repository.QuartierRepository;
-import com.tontinemarche.repository.UtilisateurRepository;
 import com.tontinemarche.repository.UtilisateurRepository;
 import com.tontinemarche.service.AgentService;
 import com.tontinemarche.service.CategorieDepenseService;
@@ -40,6 +40,7 @@ public class ReferentielController {
     private final CategorieDepenseService categorieDepenseService;
     private final AgenceRepository agenceRepository;
     private final AgentRepository agentRepository;
+    private final ClientRepository clientRepository;
     private final UtilisateurRepository utilisateurRepository;
     private final AgentService agentService;
 
@@ -151,8 +152,49 @@ public class ReferentielController {
     public Map<String, Object> desactiverMarche(@PathVariable Long id) {
         Marche m = getMarcheOrThrow(id);
         assertAdminAgenceScope(m);
+        if (m.getStatut() == StatutEntity.INACTIF) {
+            return toMarcheMap(m);
+        }
         m.setStatut(StatutEntity.INACTIF);
         return toMarcheMap(marcheRepository.save(m));
+    }
+
+    @PatchMapping("/marches/{id}/reactiver")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN_AGENCE')")
+    public Map<String, Object> reactiverMarche(@PathVariable Long id) {
+        Marche m = getMarcheOrThrow(id);
+        assertAdminAgenceScope(m);
+        m.setStatut(StatutEntity.ACTIF);
+        return toMarcheMap(marcheRepository.save(m));
+    }
+
+    /**
+     * Suppression définitive (physique) — réservée au SUPER_ADMIN.
+     * Impossible s'il existe encore des clients rattachés au marché.
+     */
+    @DeleteMapping("/marches/{id}")
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    public Map<String, String> supprimerMarcheDefinitivement(@PathVariable Long id) {
+        Marche m = getMarcheOrThrow(id);
+        long clients = clientRepository.countByMarcheId(id);
+        if (clients > 0) {
+            throw ApiException.badRequest(
+                    "Impossible de supprimer définitivement ce marché : "
+                            + clients + " client(s) y sont encore rattaché(s). "
+                            + "Désactivez-le plutôt, ou réaffectez les clients.");
+        }
+
+        // Détacher les agents (table agent_marches)
+        for (Agent agent : agentRepository.findByMarcheId(id)) {
+            if (agent.getMarches() != null) {
+                agent.getMarches().removeIf(mm -> mm.getId().equals(id));
+                agentRepository.save(agent);
+            }
+        }
+
+        String nom = m.getNom();
+        marcheRepository.delete(m);
+        return Map.of("message", "Marché « " + nom + " » supprimé définitivement");
     }
 
     @GetMapping("/quartiers")
