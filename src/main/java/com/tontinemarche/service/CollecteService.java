@@ -82,6 +82,7 @@ public class CollecteService {
     public CollecteDto enregistrer(CollecteDto dto) {
         Client client = clientRepository.findById(dto.getClientId())
                 .orElseThrow(() -> ApiException.notFound("Client introuvable"));
+        caisseService.requireCaisseOuverte(client.getAgence().getId());
 
         if (client.getStatut() != StatutEntity.ACTIF) {
             throw ApiException.badRequest("Client inactif");

@@ -32,6 +32,8 @@ public class NotificationService {
     private final NotificationRepository notificationRepository;
     private final UtilisateurRepository utilisateurRepository;
     private final EmailService emailService;
+    private final SmsGatewayService smsGatewayService;
+    private final PlatformSettingsService platformSettingsService;
 
     @Value("${app.public.api-base-url:http://localhost:8081}")
     private String apiBaseUrl;
@@ -104,22 +106,61 @@ public class NotificationService {
     }
 
     public void sendRestitutionReceiptToClient(Client client, Restitution restitution, Agent agent) {
-        if (client.getEmail() == null || client.getEmail().isBlank()) {
-            log.debug("Aucun email pour le client {} — reçu restitution {} non envoyé",
+        if (client.getEmail() != null && !client.getEmail().isBlank()) {
+            String subject = "[Tontine Marché] Reçu de restitution " + restitution.getNumeroRecu();
+            emailService.send(client.getEmail(), subject, buildRestitutionReceiptHtml(client, restitution, agent));
+        } else {
+            log.debug("Aucun email pour le client {} — reçu restitution {} non envoyé par e-mail",
                     client.getCode(), restitution.getNumeroRecu());
-            return;
         }
-        String subject = "[Tontine Marché] Reçu de restitution " + restitution.getNumeroRecu();
-        emailService.send(client.getEmail(), subject, buildRestitutionReceiptHtml(client, restitution, agent));
+        if (shouldSendSmsToClient(client)) {
+            String msg = String.format(
+                    "Tontine Marche: restitution %s FCFA. Commission: %s FCFA. Net: %s FCFA. Recu %s.",
+                    formatAmount(restitution.getTotalCollecte()),
+                    formatAmount(restitution.getCommission()),
+                    formatAmount(restitution.getMontantNet()),
+                    restitution.getNumeroRecu());
+            smsGatewayService.sendSms(client.getTelephone(), msg);
+        }
     }
 
     public void sendCollecteReceiptToClient(Client client, Collecte collecte, Agent agent) {
-        if (client.getEmail() == null || client.getEmail().isBlank()) {
-            log.debug("Aucun email pour le client {} — reçu {} non envoyé", client.getCode(), collecte.getNumeroRecu());
-            return;
+        if (client.getEmail() != null && !client.getEmail().isBlank()) {
+            String subject = "[Tontine Marché] Reçu de collecte " + collecte.getNumeroRecu();
+            emailService.send(client.getEmail(), subject, buildCollecteReceiptHtml(client, collecte, agent));
+        } else {
+            log.debug("Aucun email pour le client {} — reçu {} non envoyé par e-mail",
+                    client.getCode(), collecte.getNumeroRecu());
         }
-        String subject = "[Tontine Marché] Reçu de collecte " + collecte.getNumeroRecu();
-        emailService.send(client.getEmail(), subject, buildCollecteReceiptHtml(client, collecte, agent));
+        if (shouldSendSmsToClient(client)) {
+            String msg = String.format(
+                    "Tontine Marche: collecte %s FCFA recue. Solde: %s FCFA. Recu %s.",
+                    formatAmount(collecte.getMontantRecu()),
+                    formatAmount(client.getSoldeEpargne()),
+                    collecte.getNumeroRecu());
+            smsGatewayService.sendSms(client.getTelephone(), msg);
+        }
+    }
+
+    private boolean shouldSendSmsToClient(Client client) {
+        if (client == null || client.getTelephone() == null || client.getTelephone().isBlank()) {
+            return false;
+        }
+        if (!platformSettingsService.isSmsNotificationsEnabled() || !smsGatewayService.isReady()) {
+            return false;
+        }
+        Agence agence = client.getAgence();
+        if (agence != null && agence.isSmsPourTousClients()) {
+            return true;
+        }
+        return client.isSmsNotificationsEnabled();
+    }
+
+    private static String formatAmount(java.math.BigDecimal amount) {
+        if (amount == null) {
+            return "0";
+        }
+        return amount.stripTrailingZeros().toPlainString();
     }
 
     public void sendPlainEmail(String email, String subject, String body) {

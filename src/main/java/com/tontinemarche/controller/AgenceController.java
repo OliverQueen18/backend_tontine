@@ -43,4 +43,17 @@ public class AgenceController {
     public AgenceDto desactiver(@PathVariable Long id) {
         return agenceService.desactiver(id);
     }
+
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    public void supprimer(@PathVariable Long id) {
+        agenceService.supprimerCompletement(id);
+    }
+
+    @PatchMapping("/{id}/sms-tous-clients")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN_AGENCE')")
+    public AgenceDto setSmsTousClients(@PathVariable Long id, @RequestBody java.util.Map<String, Boolean> body) {
+        boolean enabled = body != null && Boolean.TRUE.equals(body.get("enabled"));
+        return agenceService.setSmsPourTousClients(id, enabled);
+    }
 }

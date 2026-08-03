@@ -25,4 +25,10 @@ public class AgenceDto {
     private BigDecimal tauxCommission;
     private BigDecimal tauxCommissionAdmin;
     private StatutEntity statut;
+    /** SMS pour tous les clients de l'agence. */
+    private Boolean smsPourTousClients;
+    /** Switch plateforme actif (lecture seule). */
+    private Boolean smsPlateformeActive;
+    /** Passerelle technique prête (lecture seule). */
+    private Boolean smsGatewayReady;
 }

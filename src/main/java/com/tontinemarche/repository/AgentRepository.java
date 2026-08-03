@@ -17,6 +17,16 @@ public interface AgentRepository extends JpaRepository<Agent, Long> {
     Optional<Agent> findByUtilisateurId(Long utilisateurId);
     List<Agent> findByAgenceId(Long agenceId);
     List<Agent> findByAgenceIdAndStatut(Long agenceId, StatutEntity statut);
+
+    @EntityGraph(attributePaths = {"marches", "marches.agence", "agence"})
+    @Query("SELECT a FROM Agent a WHERE a.agence.statut = :statut")
+    List<Agent> findByAgenceStatut(@Param("statut") StatutEntity statut);
+
+    @EntityGraph(attributePaths = {"marches", "marches.agence", "agence"})
+    @Query("SELECT a FROM Agent a WHERE a.agence.id = :agenceId AND a.agence.statut = :statut")
+    List<Agent> findByAgenceIdAndAgenceStatut(@Param("agenceId") Long agenceId,
+                                              @Param("statut") StatutEntity statut);
+
     long countByAgenceId(Long agenceId);
     long countByStatut(StatutEntity statut);
 

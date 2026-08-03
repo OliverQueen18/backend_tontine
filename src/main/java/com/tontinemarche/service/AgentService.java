@@ -40,9 +40,10 @@ public class AgentService {
 
     @Transactional(readOnly = true)
     public List<AgentDto> findAll(Long agenceId) {
+        // Filtres / listes opérationnelles : uniquement les agents d'agences actives
         List<Agent> agents = agenceId != null
-                ? agentRepository.findByAgenceId(agenceId)
-                : agentRepository.findAll();
+                ? agentRepository.findByAgenceIdAndAgenceStatut(agenceId, StatutEntity.ACTIF)
+                : agentRepository.findByAgenceStatut(StatutEntity.ACTIF);
         return agents.stream().map(this::map).toList();
     }
 

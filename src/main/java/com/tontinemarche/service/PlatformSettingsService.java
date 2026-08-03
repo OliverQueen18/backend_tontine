@@ -15,6 +15,7 @@ import java.math.BigDecimal;
 public class PlatformSettingsService {
 
     private final PlatformSettingsRepository repository;
+    private final SmsGatewayService smsGatewayService;
 
     @Transactional(readOnly = true)
     public PlatformSettings get() {
@@ -39,6 +40,14 @@ public class PlatformSettingsService {
             validateTauxCommissionAdmin(dto.getTauxCommissionAdminDefaut());
             settings.setTauxCommissionAdminDefaut(dto.getTauxCommissionAdminDefaut());
         }
+        if (dto.getSmsNotificationsEnabled() != null) {
+            if (Boolean.TRUE.equals(dto.getSmsNotificationsEnabled()) && !smsGatewayService.isReady()) {
+                throw ApiException.badRequest(
+                        "Impossible d'activer les SMS : la passerelle n'est pas configurée "
+                                + "(SMS_GATEWAY_ENABLED et SMS_GATEWAY_API_KEY)");
+            }
+            settings.setSmsNotificationsEnabled(dto.getSmsNotificationsEnabled());
+        }
         return toDto(repository.save(settings));
     }
 
@@ -46,6 +55,11 @@ public class PlatformSettingsService {
     public BigDecimal getTauxCommissionAdminDefaut() {
         BigDecimal taux = get().getTauxCommissionAdminDefaut();
         return taux != null ? taux : new BigDecimal("0.0500");
+    }
+
+    @Transactional(readOnly = true)
+    public boolean isSmsNotificationsEnabled() {
+        return get().isSmsNotificationsEnabled();
     }
 
     private void validateTauxCommissionAdmin(BigDecimal taux) {
@@ -67,6 +81,7 @@ public class PlatformSettingsService {
                 .fraisCreationAgence(new BigDecimal("50000"))
                 .telephonePaiementMobile("+223 70 00 00 00")
                 .tauxCommissionAdminDefaut(new BigDecimal("0.0500"))
+                .smsNotificationsEnabled(false)
                 .build());
     }
 
@@ -75,6 +90,8 @@ public class PlatformSettingsService {
                 .fraisCreationAgence(s.getFraisCreationAgence())
                 .telephonePaiementMobile(s.getTelephonePaiementMobile())
                 .tauxCommissionAdminDefaut(s.getTauxCommissionAdminDefaut())
+                .smsNotificationsEnabled(s.isSmsNotificationsEnabled())
+                .smsGatewayReady(smsGatewayService.isReady())
                 .build();
     }
 }

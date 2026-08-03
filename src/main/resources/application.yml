@@ -3,6 +3,8 @@ spring:
     name: tontine-marche
   profiles:
     active: ${SPRING_PROFILES_ACTIVE:dev}
+  config:
+    import: optional:file:./application-local.yml,optional:file:./backend_tontine/application-local.yml
   datasource:
     url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:bd_tontine}
     username: ${DB_USER:oservices}
@@ -73,6 +75,16 @@ app:
     password: "${SUPER_ADMIN_PASSWORD:*@Secret@*2018}"
     email: "${SUPER_ADMIN_EMAIL:dmoussa1807@gmail.com}"
     nom-complet: "${SUPER_ADMIN_NAME:Super Administrateur}"
+
+# Passerelle Android SMS Gateway (même API que eRDV)
+# Clé / activation : variables d'env SMS_GATEWAY_* ou application-local.yml (non versionné)
+sms:
+  gateway:
+    enabled: ${SMS_GATEWAY_ENABLED:false}
+    api-key: ${SMS_GATEWAY_API_KEY:}
+    url: ${SMS_GATEWAY_URL:https://europe-west1-sms-gateway-api-simpapp.cloudfunctions.net/api_v2_sms_send}
+    request-timeout-seconds: ${SMS_GATEWAY_TIMEOUT_SECONDS:10}
+    default-country-code: ${SMS_GATEWAY_DEFAULT_COUNTRY_CODE:+223}
 
 springdoc:
   api-docs:

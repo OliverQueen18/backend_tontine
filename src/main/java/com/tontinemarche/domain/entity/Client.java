@@ -74,4 +74,9 @@ public class Client extends BaseEntity {
     @Column(nullable = false)
     @Builder.Default
     private boolean supprime = false;
+
+    /** Opt-in SMS individuel (ignoré si l'agence a smsPourTousClients). */
+    @Column(nullable = false)
+    @Builder.Default
+    private boolean smsNotificationsEnabled = false;
 }

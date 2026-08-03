@@ -51,6 +51,7 @@ public class DepenseService {
         if (dto.getCategorie() == null || dto.getCategorie().isBlank()) {
             throw ApiException.badRequest("La catégorie est obligatoire");
         }
+        caisseService.requireCaisseOuverte(dto.getAgenceId());
         if (!categorieDepenseService.isActiveForAgence(dto.getAgenceId(), dto.getCategorie().trim())) {
             throw ApiException.badRequest("Catégorie d'opération invalide ou inactive");
         }
@@ -101,6 +102,8 @@ public class DepenseService {
         if (depense.isValidee()) {
             throw ApiException.badRequest("Opération déjà validée");
         }
+
+        caisseService.requireCaisseOuverte(depense.getAgence().getId());
 
         CategorieDepense categorie = categorieDepenseService.getByNomForAgence(
                 depense.getAgence().getId(), depense.getCategorie());

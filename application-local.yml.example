@@ -1,0 +1,5 @@
+# Copier vers application-local.yml et renseigner la clé
+sms:
+  gateway:
+    enabled: true
+    api-key: sk_live_VOTRE_CLE_API

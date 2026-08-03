@@ -17,6 +17,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.security.SecureRandom;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 @Service
@@ -29,6 +31,7 @@ public class PasswordResetService {
     private final PasswordResetOtpRepository otpRepository;
     private final PasswordEncoder passwordEncoder;
     private final EmailService emailService;
+    private final SmsGatewayService smsGatewayService;
 
     @Value("${app.otp.expiration-minutes:10}")
     private int otpExpirationMinutes;
@@ -39,8 +42,13 @@ public class PasswordResetService {
     @Transactional
     public OtpResponse requestOtp(String username) {
         Utilisateur user = findActiveUser(username);
-        if (user.getEmail() == null || user.getEmail().isBlank()) {
-            throw ApiException.badRequest("Aucune adresse email associée à ce compte. Contactez votre administrateur.");
+        boolean hasEmail = user.getEmail() != null && !user.getEmail().isBlank();
+        boolean hasPhone = user.getTelephone() != null && !user.getTelephone().isBlank();
+        boolean smsReady = smsGatewayService.isReady();
+
+        if (!hasEmail && !(hasPhone && smsReady)) {
+            throw ApiException.badRequest(
+                    "Aucune adresse email ni téléphone utilisable pour ce compte. Contactez votre administrateur.");
         }
 
         otpRepository.invalidateAllForUser(user.getId());
@@ -55,15 +63,47 @@ public class PasswordResetService {
                 .build();
         otpRepository.save(entity);
 
-        emailService.send(
-                user.getEmail(),
-                "Tontine Marché — Code de réinitialisation",
-                buildOtpEmail(user.getNomComplet(), otp, otpExpirationMinutes)
-        );
+        String maskedEmail = null;
+        if (hasEmail) {
+            emailService.send(
+                    user.getEmail(),
+                    "Tontine Marché — Code de réinitialisation",
+                    buildOtpEmail(user.getNomComplet(), otp, otpExpirationMinutes)
+            );
+            maskedEmail = maskEmail(user.getEmail());
+        }
+
+        boolean smsSent = false;
+        String maskedPhone = null;
+        if (hasPhone && smsReady) {
+            String e164 = smsGatewayService.normalizePhoneNumber(user.getTelephone());
+            if (e164 != null) {
+                smsSent = smsGatewayService.sendSms(e164, buildOtpSms(otp, otpExpirationMinutes));
+                if (smsSent) {
+                    maskedPhone = maskPhone(e164);
+                }
+            }
+        }
+
+        if (!hasEmail && !smsSent) {
+            throw ApiException.badRequest(
+                    "Impossible d'envoyer le code OTP. Vérifiez le téléphone du compte ou la passerelle SMS.");
+        }
+
+        List<String> channels = new ArrayList<>();
+        if (hasEmail) {
+            channels.add("e-mail");
+        }
+        if (smsSent) {
+            channels.add("SMS");
+        }
+        String message = "Un code OTP a été envoyé par " + String.join(" et par ", channels) + ".";
 
         return OtpResponse.builder()
-                .message("Un code OTP a été envoyé à votre adresse email.")
-                .maskedEmail(maskEmail(user.getEmail()))
+                .message(message)
+                .maskedEmail(maskedEmail)
+                .maskedPhone(maskedPhone)
+                .smsSent(smsSent)
                 .expiresInSeconds(otpExpirationMinutes * 60)
                 .step(1)
                 .build();
@@ -144,6 +184,18 @@ public class PasswordResetService {
         int at = email.indexOf('@');
         if (at <= 1) return "***@" + email.substring(at + 1);
         return email.charAt(0) + "***" + email.substring(at);
+    }
+
+    private String maskPhone(String phone) {
+        if (phone == null || phone.length() < 6) {
+            return "***";
+        }
+        return phone.substring(0, 4) + "****" + phone.substring(phone.length() - 2);
+    }
+
+    private String buildOtpSms(String otp, int minutes) {
+        return "Tontine Marche: votre code de reinitialisation est " + otp
+                + ". Valide " + minutes + " minutes.";
     }
 
     private String buildOtpEmail(String name, String otp, int minutes) {

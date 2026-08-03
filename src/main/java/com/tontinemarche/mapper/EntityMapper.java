@@ -29,6 +29,7 @@ public final class EntityMapper {
                 .tauxCommission(a.getTauxCommission())
                 .tauxCommissionAdmin(a.getTauxCommissionAdmin())
                 .statut(a.getStatut())
+                .smsPourTousClients(a.isSmsPourTousClients())
                 .build();
     }
 
@@ -86,6 +87,7 @@ public final class EntityMapper {
                 .statut(c.getStatut())
                 .nombreJoursPayes(ClientCalculUtil.computeNombreJoursPayes(c.getSoldeEpargne(), c.getMontantJournalier()))
                 .dateProbableRetrait(ClientCalculUtil.computeDateProbableRetrait(c.getDateAdhesion(), LocalDate.now()))
+                .smsNotificationsEnabled(c.isSmsNotificationsEnabled())
                 .build();
     }
 
@@ -190,6 +192,11 @@ public final class EntityMapper {
                 .statut(c.getStatut())
                 .dateOuverture(c.getDateOuverture())
                 .dateCloture(c.getDateCloture())
+                .ouvertParNom(c.getOuvertPar() != null ? c.getOuvertPar().getNomComplet() : null)
+                .clotureParNom(c.getCloturePar() != null ? c.getCloturePar().getNomComplet() : null)
+                .agenceTelephone(c.getAgence().getTelephone())
+                .agenceAdresse(c.getAgence().getAdresse())
+                .agenceVille(c.getAgence().getVille())
                 .mouvements(mouvements)
                 .build();
     }

@@ -49,4 +49,6 @@ public class ClientDto {
     private LocalDate dateProbableRetrait;
     /** Commission agence estimée sur le solde actuel (calculé). */
     private BigDecimal commissionEstimee;
+    /** Opt-in SMS pour ce client. */
+    private Boolean smsNotificationsEnabled;
 }

@@ -45,4 +45,9 @@ public class Agence extends BaseEntity {
     @Column(nullable = false)
     @Builder.Default
     private StatutEntity statut = StatutEntity.ACTIF;
+
+    /** Si true, tous les clients de l'agence reçoivent les SMS (sous réserve du switch plateforme). */
+    @Column(nullable = false)
+    @Builder.Default
+    private boolean smsPourTousClients = false;
 }

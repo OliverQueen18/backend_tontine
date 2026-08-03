@@ -8,6 +8,8 @@ import lombok.Getter;
 public class OtpResponse {
     private String message;
     private String maskedEmail;
+    private String maskedPhone;
+    private Boolean smsSent;
     private int expiresInSeconds;
     private int step;
     private String resetToken;

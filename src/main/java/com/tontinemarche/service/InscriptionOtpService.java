@@ -25,6 +25,7 @@ public class InscriptionOtpService {
     private final InscriptionAgenceOtpRepository otpRepository;
     private final PasswordEncoder passwordEncoder;
     private final EmailService emailService;
+    private final SmsGatewayService smsGatewayService;
 
     @Value("${app.otp.expiration-minutes:10}")
     private int otpExpirationMinutes;
@@ -56,9 +57,28 @@ public class InscriptionOtpService {
                 buildOtpEmail(name, otp, otpExpirationMinutes)
         );
 
+        boolean smsSent = false;
+        String maskedPhone = null;
+        String phone = request.getTelephone();
+        if (phone != null && !phone.isBlank() && smsGatewayService.isReady()) {
+            String e164 = smsGatewayService.normalizePhoneNumber(phone);
+            if (e164 != null) {
+                smsSent = smsGatewayService.sendSms(e164, buildOtpSms(otp, otpExpirationMinutes));
+                if (smsSent) {
+                    maskedPhone = maskPhone(e164);
+                }
+            }
+        }
+
+        String message = smsSent
+                ? "Un code OTP a été envoyé par e-mail et par SMS."
+                : "Un code OTP a été envoyé à votre adresse e-mail.";
+
         return OtpResponse.builder()
-                .message("Un code OTP a été envoyé à votre adresse e-mail.")
+                .message(message)
                 .maskedEmail(maskEmail(email))
+                .maskedPhone(maskedPhone)
+                .smsSent(smsSent)
                 .expiresInSeconds(otpExpirationMinutes * 60)
                 .step(1)
                 .build();
@@ -126,6 +146,18 @@ public class InscriptionOtpService {
         int at = email.indexOf('@');
         if (at <= 1) return "***@" + email.substring(at + 1);
         return email.charAt(0) + "***" + email.substring(at);
+    }
+
+    private String maskPhone(String phone) {
+        if (phone == null || phone.length() < 6) {
+            return "***";
+        }
+        return phone.substring(0, 4) + "****" + phone.substring(phone.length() - 2);
+    }
+
+    private String buildOtpSms(String otp, int minutes) {
+        return "Tontine Marche: votre code de verification est " + otp
+                + ". Valide " + minutes + " minutes.";
     }
 
     private String buildOtpEmail(String name, String otp, int minutes) {

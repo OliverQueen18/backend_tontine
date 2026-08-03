@@ -39,6 +39,8 @@ public class ClientService {
     private final AuditService auditService;
     private final NotificationService notificationService;
     private final CommissionGrilleService commissionGrilleService;
+    private final PlatformSettingsService platformSettingsService;
+    private final SmsGatewayService smsGatewayService;
 
     @Transactional(readOnly = true)
     public List<ClientDto> search(String q, Long agenceId, Long agentId) {
@@ -102,6 +104,7 @@ public class ClientService {
                 .dateAdhesion(dto.getDateAdhesion() != null ? dto.getDateAdhesion() : LocalDate.now())
                 .soldeEpargne(BigDecimal.ZERO)
                 .statut(StatutEntity.ACTIF)
+                .smsNotificationsEnabled(resolveSmsOptInOnCreate(dto, agence))
                 .build();
 
         client = clientRepository.save(client);
@@ -162,6 +165,16 @@ public class ClientService {
         if (dto.getStatut() != null && dto.getStatut() != client.getStatut()) {
             trackChange(client, "statut", client.getStatut().name(), dto.getStatut().name());
             client.setStatut(dto.getStatut());
+        }
+        if (dto.getSmsNotificationsEnabled() != null
+                && dto.getSmsNotificationsEnabled() != client.isSmsNotificationsEnabled()) {
+            if (Boolean.TRUE.equals(dto.getSmsNotificationsEnabled())) {
+                assertSmsCanBeEnabledForClient(client.getAgence());
+            }
+            trackChange(client, "smsNotificationsEnabled",
+                    String.valueOf(client.isSmsNotificationsEnabled()),
+                    String.valueOf(dto.getSmsNotificationsEnabled()));
+            client.setSmsNotificationsEnabled(dto.getSmsNotificationsEnabled());
         }
 
         auditService.log("MODIFICATION", "Client", client.getCode(), client.getNomComplet(), client.getAgence().getId());
@@ -459,6 +472,31 @@ public class ClientService {
         boolean allowed = agent.getMarches().stream().anyMatch(m -> m.getId().equals(marcheId));
         if (!allowed) {
             throw ApiException.badRequest("Ce marché n'est pas assigné à l'agent collecteur");
+        }
+    }
+
+    private boolean resolveSmsOptInOnCreate(ClientDto dto, Agence agence) {
+        if (agence.isSmsPourTousClients()) {
+            return true;
+        }
+        if (Boolean.TRUE.equals(dto.getSmsNotificationsEnabled())) {
+            assertSmsCanBeEnabledForClient(agence);
+            return true;
+        }
+        return false;
+    }
+
+    private void assertSmsCanBeEnabledForClient(Agence agence) {
+        if (!platformSettingsService.isSmsNotificationsEnabled()) {
+            throw ApiException.badRequest(
+                    "Les notifications SMS ne sont pas activées au niveau plateforme");
+        }
+        if (!smsGatewayService.isReady()) {
+            throw ApiException.badRequest(
+                    "La passerelle SMS n'est pas configurée (SMS_GATEWAY_ENABLED / SMS_GATEWAY_API_KEY)");
+        }
+        if (agence == null) {
+            throw ApiException.badRequest("Agence introuvable pour activer les SMS");
         }
     }
 

@@ -54,7 +54,8 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(MaxUploadSizeExceededException.class)
     public ResponseEntity<Map<String, Object>> handleMaxUpload(MaxUploadSizeExceededException ex) {
-        return build(HttpStatus.BAD_REQUEST, "Fichier trop volumineux (maximum 20 Mo)");
+        return build(HttpStatus.PAYLOAD_TOO_LARGE,
+                "Image ou fichier trop volumineux (maximum 20 Mo). Choisissez un fichier plus léger.");
     }
 
     @ExceptionHandler(Exception.class)

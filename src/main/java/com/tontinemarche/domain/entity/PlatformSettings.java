@@ -28,4 +28,9 @@ public class PlatformSettings {
     @Column(nullable = false, precision = 8, scale = 4)
     @Builder.Default
     private BigDecimal tauxCommissionAdminDefaut = new BigDecimal("0.0500");
+
+    /** Master switch SUPER_ADMIN : autorise les notifications SMS métier. */
+    @Column(nullable = false)
+    @Builder.Default
+    private boolean smsNotificationsEnabled = false;
 }

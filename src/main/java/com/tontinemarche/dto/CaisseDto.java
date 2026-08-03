@@ -26,5 +26,10 @@ public class CaisseDto {
     private StatutCaisse statut;
     private LocalDateTime dateOuverture;
     private LocalDateTime dateCloture;
+    private String ouvertParNom;
+    private String clotureParNom;
+    private String agenceTelephone;
+    private String agenceAdresse;
+    private String agenceVille;
     private List<MouvementCaisseDto> mouvements;
 }

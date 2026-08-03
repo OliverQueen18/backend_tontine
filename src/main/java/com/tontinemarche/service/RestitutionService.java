@@ -157,6 +157,8 @@ public class RestitutionService {
             }
         }
 
+        caisseService.requireCaisseOuverte(client.getAgence().getId());
+
         if (client.getStatut() != StatutEntity.ACTIF) {
             throw ApiException.badRequest("Client inactif");
         }
@@ -233,11 +235,13 @@ public class RestitutionService {
             throw ApiException.badRequest("Cette restitution est déjà finalisée");
         }
 
+        Client client = restitution.getClient();
+        caisseService.requireCaisseOuverte(client.getAgence().getId());
+
         if (commission != null) {
             applyCommissionAmount(restitution, commission);
         }
 
-        Client client = restitution.getClient();
         BigDecimal soldeAvant = client.getSoldeEpargne();
         restitution.setSignatureClient(signatureClient);
         restitution.setValidee(true);

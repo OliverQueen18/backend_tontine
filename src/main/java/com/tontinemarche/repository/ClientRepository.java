@@ -3,8 +3,8 @@ package com.tontinemarche.repository;
 import com.tontinemarche.domain.entity.Client;
 import com.tontinemarche.domain.enums.StatutEntity;
 import org.springframework.data.jpa.repository.EntityGraph;
-import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -30,6 +30,10 @@ public interface ClientRepository extends JpaRepository<Client, Long> {
     long countByAgenceAndCodePrefix(@Param("agenceId") Long agenceId, @Param("prefix") String prefix);
 
     long countByMarcheId(Long marcheId);
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("UPDATE Client c SET c.smsNotificationsEnabled = :enabled WHERE c.agence.id = :agenceId AND c.supprime = false")
+    int updateSmsEnabledByAgenceId(@Param("agenceId") Long agenceId, @Param("enabled") boolean enabled);
 
     @Query("""
             SELECT c FROM Client c
