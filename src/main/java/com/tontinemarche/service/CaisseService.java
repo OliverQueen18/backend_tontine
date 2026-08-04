@@ -17,6 +17,7 @@ import com.tontinemarche.repository.CaisseRepository;
 import com.tontinemarche.repository.MouvementCaisseRepository;
 import com.tontinemarche.repository.UtilisateurRepository;
 import com.tontinemarche.security.UserPrincipal;
+import com.tontinemarche.util.AppClock;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
@@ -42,7 +43,7 @@ public class CaisseService {
     @Transactional(readOnly = true)
     public CaisseDto getCaisseDuJour(Long agenceId) {
         assertCanAccessAgence(agenceId);
-        Caisse caisse = caisseRepository.findByAgenceIdAndDateCaisse(agenceId, LocalDate.now())
+        Caisse caisse = caisseRepository.findByAgenceIdAndDateCaisse(agenceId, AppClock.today())
                 .orElse(null);
         if (caisse == null) {
             return null;
@@ -53,7 +54,7 @@ public class CaisseService {
     @Transactional(readOnly = true)
     public CaisseDto getByDate(Long agenceId, LocalDate date) {
         assertCanAccessAgence(agenceId);
-        LocalDate dateCaisse = date != null ? date : LocalDate.now();
+        LocalDate dateCaisse = date != null ? date : AppClock.today();
         Caisse caisse = caisseRepository.findByAgenceIdAndDateCaisse(agenceId, dateCaisse)
                 .orElseThrow(() -> ApiException.notFound("Aucune caisse pour le " + dateCaisse));
         return map(caisse);
@@ -70,8 +71,8 @@ public class CaisseService {
     @Transactional(readOnly = true)
     public List<CaisseDto> findByPeriode(Long agenceId, LocalDate debut, LocalDate fin) {
         assertCanAccessAgence(agenceId);
-        LocalDate d0 = debut != null ? debut : LocalDate.now().withDayOfMonth(1);
-        LocalDate d1 = fin != null ? fin : LocalDate.now();
+        LocalDate d0 = debut != null ? debut : AppClock.today().withDayOfMonth(1);
+        LocalDate d1 = fin != null ? fin : AppClock.today();
         if (d0.isAfter(d1)) {
             throw ApiException.badRequest("La date de début doit être antérieure à la date de fin");
         }
@@ -87,7 +88,7 @@ public class CaisseService {
     @Transactional(readOnly = true)
     public CaisseControleDto getControle(Long agenceId) {
         assertCanAccessAgence(agenceId);
-        LocalDate today = LocalDate.now();
+        LocalDate today = AppClock.today();
         List<CaisseDto> anterieures = caissesAnterieuresOuvertes(agenceId, today).stream()
                 .map(this::mapSummary)
                 .toList();
@@ -124,7 +125,7 @@ public class CaisseService {
     @Transactional
     public CaisseDto ouvrir(Long agenceId, BigDecimal soldeInitial) {
         assertCanAccessAgence(agenceId);
-        LocalDate today = LocalDate.now();
+        LocalDate today = AppClock.today();
         if (caisseRepository.findByAgenceIdAndDateCaisse(agenceId, today).isPresent()) {
             throw ApiException.conflict("La caisse du jour est déjà ouverte");
         }
@@ -160,7 +161,7 @@ public class CaisseService {
                 .soldeTheorique(report)
                 .statut(StatutCaisse.OUVERTE)
                 .ouvertPar(currentUser())
-                .dateOuverture(LocalDateTime.now())
+                .dateOuverture(AppClock.now())
                 .build();
 
         caisse = caisseRepository.save(caisse);
@@ -178,7 +179,7 @@ public class CaisseService {
         final LocalDate dateCaisse = payload.get("dateCaisse") != null
                 && !payload.get("dateCaisse").toString().isBlank()
                 ? LocalDate.parse(payload.get("dateCaisse").toString())
-                : LocalDate.now();
+                : AppClock.today();
 
         Caisse caisse = caisseRepository.findByAgenceIdAndDateCaisse(agenceId, dateCaisse)
                 .orElseThrow(() -> ApiException.notFound("Aucune caisse pour le " + dateCaisse));
@@ -201,7 +202,7 @@ public class CaisseService {
         caisse.setObservation(observation);
         caisse.setStatut(StatutCaisse.CLOTUREE);
         caisse.setCloturePar(currentUser());
-        caisse.setDateCloture(LocalDateTime.now());
+        caisse.setDateCloture(AppClock.now());
 
         caisse = caisseRepository.save(caisse);
 
@@ -304,7 +305,7 @@ public class CaisseService {
         if (agenceId == null) {
             throw ApiException.badRequest("Agence requise pour vérifier la caisse");
         }
-        LocalDate today = LocalDate.now();
+        LocalDate today = AppClock.today();
         assertAucuneCaisseAnterieureOuverte(agenceId, today);
 
         Caisse caisse = caisseRepository.findByAgenceIdAndDateCaisse(agenceId, today)
@@ -329,7 +330,7 @@ public class CaisseService {
                 .montant(montant)
                 .libelle(libelle)
                 .reference(reference)
-                .dateHeure(LocalDateTime.now())
+                .dateHeure(AppClock.now())
                 .effectuePar(currentUser())
                 .build());
 
@@ -433,7 +434,7 @@ public class CaisseService {
                     .categorie(CategorieMouvement.REPORT)
                     .montant(report)
                     .libelle("Report solde antérieur")
-                    .dateHeure(LocalDateTime.now())
+                    .dateHeure(AppClock.now())
                     .effectuePar(currentUser())
                     .build());
         } else {

@@ -5,6 +5,8 @@ spring:
     active: ${SPRING_PROFILES_ACTIVE:dev}
   config:
     import: optional:file:./application-local.yml,optional:file:./backend_tontine/application-local.yml
+  jackson:
+    time-zone: Africa/Bamako
   datasource:
     url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:bd_tontine}
     username: ${DB_USER:oservices}
