@@ -165,29 +165,47 @@ public class AgenceService {
     }
 
     /**
-     * Suppression définitive d'une agence et de toutes ses données liées.
+     * Suppression définitive d'une agence et de toutes ses données liées (cascade).
      * Réservé au SUPER_ADMIN.
      */
     @Transactional
     public void supprimerCompletement(Long id) {
+        UserPrincipal principal = requirePrincipal();
+        if (principal.getRole() != RoleType.SUPER_ADMIN) {
+            throw ApiException.forbidden("Seul un super administrateur peut supprimer une agence");
+        }
+
         Agence agence = getEntity(id);
         String code = agence.getCode();
         String nom = agence.getNom();
-        entityManager.detach(agence);
 
-        // Caisse
+        // Couper le suivi JPA pour éviter les conflits avec les DELETE JDBC
+        entityManager.clear();
+
+        // --- 1. Caisse & mouvements ---
         jdbcTemplate.update("""
                 DELETE FROM mouvements_caisse
                 WHERE caisse_id IN (SELECT id FROM caisses WHERE agence_id = ?)
                 """, id);
+        jdbcTemplate.update("""
+                UPDATE caisses SET ouvert_par_id = NULL, cloture_par_id = NULL
+                WHERE agence_id = ?
+                """, id);
         jdbcTemplate.update("DELETE FROM caisses WHERE agence_id = ?", id);
 
-        // Opérations métier
-        jdbcTemplate.update("DELETE FROM collectes WHERE agence_id = ?", id);
-        jdbcTemplate.update("DELETE FROM restitutions WHERE agence_id = ?", id);
+        // --- 2. Opérations métier (avant clients / agents / users) ---
+        jdbcTemplate.update("""
+                UPDATE depenses SET agent_id = NULL, client_id = NULL, valide_par_id = NULL
+                WHERE agence_id = ?
+                """, id);
         jdbcTemplate.update("DELETE FROM depenses WHERE agence_id = ?", id);
+        jdbcTemplate.update("DELETE FROM collectes WHERE agence_id = ?", id);
+        jdbcTemplate.update("""
+                UPDATE restitutions SET caissier_id = NULL WHERE agence_id = ?
+                """, id);
+        jdbcTemplate.update("DELETE FROM restitutions WHERE agence_id = ?", id);
 
-        // Clients et historiques / affectations
+        // --- 3. Clients, historiques, affectations ---
         jdbcTemplate.update("""
                 DELETE FROM affectations_clients
                 WHERE client_id IN (SELECT id FROM clients WHERE agence_id = ?)
@@ -198,9 +216,12 @@ public class AgenceService {
                 DELETE FROM client_historique
                 WHERE client_id IN (SELECT id FROM clients WHERE agence_id = ?)
                 """, id);
+        jdbcTemplate.update("""
+                UPDATE clients SET agent_id = NULL, marche_id = NULL WHERE agence_id = ?
+                """, id);
         jdbcTemplate.update("DELETE FROM clients WHERE agence_id = ?", id);
 
-        // Agents ↔ marchés
+        // --- 4. Agents ↔ marchés ---
         jdbcTemplate.update("""
                 DELETE FROM agent_marches
                 WHERE agent_id IN (SELECT id FROM agents WHERE agence_id = ?)
@@ -209,7 +230,7 @@ public class AgenceService {
         jdbcTemplate.update("UPDATE agents SET utilisateur_id = NULL WHERE agence_id = ?", id);
         jdbcTemplate.update("DELETE FROM agents WHERE agence_id = ?", id);
 
-        // Comptes utilisateurs de l'agence
+        // --- 5. Comptes utilisateurs de l'agence ---
         jdbcTemplate.update("""
                 DELETE FROM notifications
                 WHERE utilisateur_id IN (SELECT id FROM utilisateurs WHERE agence_id = ?)
@@ -222,22 +243,56 @@ public class AgenceService {
                 DELETE FROM password_reset_otps
                 WHERE utilisateur_id IN (SELECT id FROM utilisateurs WHERE agence_id = ?)
                 """, id);
+        // Sécurité : détacher FKs restantes éventuelles vers ces utilisateurs
+        jdbcTemplate.update("""
+                UPDATE caisses SET ouvert_par_id = NULL
+                WHERE ouvert_par_id IN (SELECT id FROM utilisateurs WHERE agence_id = ?)
+                """, id);
+        jdbcTemplate.update("""
+                UPDATE caisses SET cloture_par_id = NULL
+                WHERE cloture_par_id IN (SELECT id FROM utilisateurs WHERE agence_id = ?)
+                """, id);
+        jdbcTemplate.update("""
+                UPDATE mouvements_caisse SET effectue_par_id = NULL
+                WHERE effectue_par_id IN (SELECT id FROM utilisateurs WHERE agence_id = ?)
+                """, id);
+        jdbcTemplate.update("""
+                UPDATE depenses SET valide_par_id = NULL
+                WHERE valide_par_id IN (SELECT id FROM utilisateurs WHERE agence_id = ?)
+                """, id);
+        jdbcTemplate.update("""
+                UPDATE restitutions SET caissier_id = NULL
+                WHERE caissier_id IN (SELECT id FROM utilisateurs WHERE agence_id = ?)
+                """, id);
         jdbcTemplate.update("DELETE FROM utilisateurs WHERE agence_id = ?", id);
 
-        // Référentiels locaux
+        // --- 6. Référentiels locaux ---
         jdbcTemplate.update("DELETE FROM marches WHERE agence_id = ?", id);
         jdbcTemplate.update("DELETE FROM quartiers WHERE agence_id = ?", id);
         jdbcTemplate.update("DELETE FROM grille_commission_lignes WHERE agence_id = ?", id);
         jdbcTemplate.update("DELETE FROM agence_categorie_desactivations WHERE agence_id = ?", id);
 
-        // Liens optionnels
-        jdbcTemplate.update(
-                "UPDATE demandes_inscription_agence SET agence_creee_id = NULL WHERE agence_creee_id = ?",
-                id);
-        jdbcTemplate.update("UPDATE audit_logs SET agence_id = NULL WHERE agence_id = ?", id);
-        jdbcTemplate.update("DELETE FROM agences WHERE id = ?", id);
+        // --- 7. Demandes d'inscription ayant créé cette agence + OTP liés ---
+        jdbcTemplate.update("""
+                DELETE FROM inscription_agence_otps
+                WHERE LOWER(email) IN (
+                    SELECT LOWER(email) FROM demandes_inscription_agence WHERE agence_creee_id = ?
+                )
+                """, id);
+        jdbcTemplate.update("DELETE FROM demandes_inscription_agence WHERE agence_creee_id = ?", id);
 
-        auditService.log("SUPPRESSION", "Agence", code, nom, null);
+        // --- 8. Journal d'audit de l'agence ---
+        jdbcTemplate.update("DELETE FROM audit_logs WHERE agence_id = ?", id);
+
+        // --- 9. Agence ---
+        int deleted = jdbcTemplate.update("DELETE FROM agences WHERE id = ?", id);
+        if (deleted == 0) {
+            throw ApiException.notFound("Agence introuvable: " + id);
+        }
+
+        entityManager.clear();
+        auditService.log("SUPPRESSION_AGENCE_CASCADE", "Agence", code,
+                "Suppression cascade de l'agence « " + nom + " » et de toutes ses données", null);
     }
 
     public Agence getEntity(Long id) {
