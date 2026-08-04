@@ -20,8 +20,8 @@ spring:
         format_sql: true
   servlet:
     multipart:
-      max-file-size: 20MB
-      max-request-size: 25MB
+      max-file-size: 5MB
+      max-request-size: 6MB
   mail:
     host: ${MAIL_HOST:smtp.gmail.com}
     port: ${MAIL_PORT:587}
@@ -65,6 +65,9 @@ app:
     depense-seuil: ${DEPENSE_SEUIL:50000}
   storage:
     upload-dir: ${UPLOAD_DIR:uploads}
+    max-image-dimension: ${UPLOAD_MAX_DIMENSION:1600}
+    max-image-bytes: ${UPLOAD_MAX_BYTES:1048576}
+    jpeg-quality: ${UPLOAD_JPEG_QUALITY:0.82}
   public:
     api-base-url: ${PUBLIC_API_BASE_URL:http://localhost:8081}
   otp:
@@ -118,3 +121,16 @@ spring:
       on-profile: prod
   jpa:
     show-sql: false
+
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
+
+logging:
+  level:
+    com.tontinemarche: WARN
+    org.springframework.security: WARN
+    org.springframework.mail: WARN
+    org.hibernate: WARN

@@ -1,6 +1,7 @@
 package com.tontinemarche.service;
 
 import com.tontinemarche.exception.ApiException;
+import com.tontinemarche.util.ImageCompressionUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
@@ -30,12 +31,22 @@ public class MediaStorageService {
     );
 
     private final Path uploadDir;
+    private final int maxImageDimension;
+    private final long maxImageBytes;
+    private final float jpegQuality;
 
-    public MediaStorageService(@Value("${app.storage.upload-dir:uploads}") String uploadDir) {
+    public MediaStorageService(
+            @Value("${app.storage.upload-dir:uploads}") String uploadDir,
+            @Value("${app.storage.max-image-dimension:1600}") int maxImageDimension,
+            @Value("${app.storage.max-image-bytes:1048576}") long maxImageBytes,
+            @Value("${app.storage.jpeg-quality:0.82}") float jpegQuality
+    ) {
         this.uploadDir = Path.of(uploadDir).toAbsolutePath().normalize();
+        this.maxImageDimension = maxImageDimension;
+        this.maxImageBytes = maxImageBytes;
+        this.jpegQuality = jpegQuality;
         try {
             Files.createDirectories(this.uploadDir);
-            // Vérifie tôt que le dossier est réellement inscriptible (volume Docker souvent root).
             Path probe = this.uploadDir.resolve(".write-test");
             Files.writeString(probe, "ok");
             Files.deleteIfExists(probe);
@@ -84,6 +95,7 @@ public class MediaStorageService {
         }
         try {
             Files.copy(file.getInputStream(), target, StandardCopyOption.REPLACE_EXISTING);
+            filename = compressStoredImage(target, contentType, filename);
         } catch (AccessDeniedException e) {
             log.error("Permission refusée sur {}", uploadDir, e);
             throw new ApiException(
@@ -94,6 +106,20 @@ public class MediaStorageService {
             throw ApiException.badRequest("Erreur lors de l'enregistrement du fichier");
         }
         return "/api/public/uploads/" + filename;
+    }
+
+    private String compressStoredImage(Path target, String contentType, String filename) throws IOException {
+        if (!ImageCompressionUtil.isRasterImage(contentType)) {
+            return filename;
+        }
+        String compressedName = ImageCompressionUtil.compressFileIfNeeded(
+                target, contentType, maxImageDimension, maxImageBytes, jpegQuality);
+        if (compressedName != null) {
+            long after = Files.size(uploadDir.resolve(compressedName));
+            log.debug("Image compressée : {} → {} octets", filename, after);
+            return compressedName;
+        }
+        return filename;
     }
 
     public Path resolve(String filename) {
@@ -107,10 +133,6 @@ public class MediaStorageService {
         return resolved;
     }
 
-    /**
-     * Les navigateurs envoient parfois un Content-Type vide ou application/octet-stream.
-     * On déduit alors le type depuis l'extension du nom de fichier.
-     */
     private String resolveContentType(MultipartFile file) {
         String contentType = file.getContentType();
         if (contentType != null) {

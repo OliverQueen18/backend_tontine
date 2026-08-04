@@ -1,0 +1,10 @@
+target/
+.git/
+.idea/
+*.iml
+.vscode/
+uploads/
+*.log
+.env
+application-local.yml
+**/*.md

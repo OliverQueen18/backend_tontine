@@ -17,6 +17,7 @@ import com.tontinemarche.repository.CollecteRepository;
 import com.tontinemarche.repository.UtilisateurRepository;
 import com.tontinemarche.security.UserPrincipal;
 import com.tontinemarche.util.ClientCalculUtil;
+import com.tontinemarche.util.SignatureUtil;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
@@ -60,6 +61,7 @@ public class CollecteService {
                         .clientNom(client.getNomComplet())
                         .clientPhotoUrl(client.getPhotoUrl())
                         .agentId(agentId)
+                        .agenceId(client.getAgence().getId())
                         .montantPrevu(client.getMontantJournalier())
                         .montantJournalier(client.getMontantJournalier())
                         .soldeEpargne(client.getSoldeEpargne())
@@ -117,6 +119,7 @@ public class CollecteService {
         }
 
         boolean signee = dto.getSignatureClient() != null && !dto.getSignatureClient().isBlank();
+        String signature = signee ? SignatureUtil.compress(dto.getSignatureClient()) : null;
 
         Collecte collecte = Collecte.builder()
                 .numeroRecu(numeroRecu)
@@ -128,7 +131,7 @@ public class CollecteService {
                 .nombreJoursPayes(nombreJours)
                 .dateCollecte(now.toLocalDate())
                 .dateHeure(now)
-                .signatureClient(signee ? dto.getSignatureClient() : null)
+                .signatureClient(signature)
                 .validee(signee)
                 .annulee(false)
                 .build();
@@ -193,7 +196,7 @@ public class CollecteService {
             throw ApiException.badRequest("Cette collecte est déjà signée");
         }
 
-        collecte.setSignatureClient(signatureClient);
+        collecte.setSignatureClient(SignatureUtil.compress(signatureClient));
         collecte.setValidee(true);
         collecte = collecteRepository.save(collecte);
 

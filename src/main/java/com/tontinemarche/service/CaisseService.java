@@ -258,8 +258,8 @@ public class CaisseService {
     }
 
     /**
-     * Supprime une caisse (clôturée ou ouverte sans opérations métier).
-     * Uniquement la dernière de la chaîne, pour préserver l'enchaînement des soldes.
+     * Supprime une caisse et son journal, puis recalcule les reports des caisses suivantes.
+     * Les collectes/restitutions métier restent en base (seul le journal de caisse est retiré).
      */
     @Transactional
     public void supprimer(Long id) {
@@ -267,24 +267,36 @@ public class CaisseService {
                 .orElseThrow(() -> ApiException.notFound("Caisse introuvable"));
         Long agenceId = caisse.getAgence().getId();
         assertCanAccessAgence(agenceId);
-        assertEstDerniereCaisse(caisse);
-
-        List<MouvementCaisse> mouvements = mouvementCaisseRepository
-                .findByCaisseIdOrderByDateHeureDesc(caisse.getId());
-        boolean hasOpsMetier = mouvements.stream()
-                .anyMatch(m -> m.getCategorie() != CategorieMouvement.REPORT);
-        if (hasOpsMetier) {
-            throw ApiException.badRequest(
-                    "Impossible de supprimer cette caisse : des mouvements métier existent. "
-                            + "Annulez d'abord les opérations concernées, ou annulez uniquement la clôture.");
-        }
 
         LocalDate date = caisse.getDateCaisse();
+        long nbMouvements = mouvementCaisseRepository
+                .findByCaisseIdOrderByDateHeureDesc(caisse.getId())
+                .size();
+
+        Caisse precedente = caisseRepository
+                .findFirstByAgenceIdAndDateCaisseLessThanOrderByDateCaisseDesc(agenceId, date)
+                .orElse(null);
+
         mouvementCaisseRepository.deleteByCaisseId(caisse.getId());
         caisseRepository.delete(caisse);
+        // Flush pour que les requêtes suivantes ne voient plus la caisse supprimée
+        caisseRepository.flush();
+
+        if (precedente != null) {
+            propagerSoldesSuivants(precedente);
+        } else {
+            List<Caisse> suivantes = caisseRepository
+                    .findByAgenceIdAndDateCaisseGreaterThanOrderByDateCaisseAsc(agenceId, date);
+            if (!suivantes.isEmpty()) {
+                Caisse premiere = suivantes.get(0);
+                appliquerSoldeInitial(premiere, BigDecimal.ZERO);
+                caisseRepository.save(premiere);
+                propagerSoldesSuivants(premiere);
+            }
+        }
 
         auditService.log("SUPPRESSION_CAISSE", "Caisse", date.toString(),
-                "Caisse supprimée", agenceId);
+                "Caisse supprimée (" + nbMouvements + " mouvement(s) journal)", agenceId);
     }
 
     @Transactional(readOnly = true)
@@ -358,9 +370,9 @@ public class CaisseService {
                         caisse.getAgence().getId(), caisse.getDateCaisse())
                 .ifPresent(suivante -> {
                     throw ApiException.badRequest(
-                            "Impossible : une caisse postérieure existe (" + suivante.getDateCaisse()
-                                    + "). Traitez d'abord les caisses les plus récentes pour préserver "
-                                    + "l'enchaînement des soldes.");
+                            "Impossible : une caisse plus récente existe (" + suivante.getDateCaisse()
+                                    + "). Supprimez ou annulez d'abord les caisses les plus récentes "
+                                    + "(de la plus récente vers la plus ancienne).");
                 });
     }
 

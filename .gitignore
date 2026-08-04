@@ -8,3 +8,5 @@ target/
 *.log
 .env
 application-local.yml
+uploads/
+

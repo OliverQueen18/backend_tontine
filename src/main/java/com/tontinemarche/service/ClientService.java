@@ -11,6 +11,7 @@ import com.tontinemarche.repository.*;
 import com.tontinemarche.security.UserPrincipal;
 import com.tontinemarche.config.MarcheCodeInitializer;
 import com.tontinemarche.util.PhotoUrlSanitizer;
+import com.tontinemarche.util.SignatureUtil;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
@@ -95,7 +96,7 @@ public class ClientService {
                 .adresse(dto.getAdresse())
                 .profession(dto.getProfession())
                 .photoUrl(PhotoUrlSanitizer.sanitize(dto.getPhotoUrl()))
-                .signatureReference(dto.getSignatureReference())
+                .signatureReference(SignatureUtil.compress(dto.getSignatureReference()))
                 .agence(agence)
                 .marche(marche)
                 .agent(agent)

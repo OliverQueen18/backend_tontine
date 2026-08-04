@@ -18,6 +18,7 @@ import com.tontinemarche.repository.CollecteRepository;
 import com.tontinemarche.repository.RestitutionRepository;
 import com.tontinemarche.repository.UtilisateurRepository;
 import com.tontinemarche.security.UserPrincipal;
+import com.tontinemarche.util.SignatureUtil;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
@@ -243,7 +244,7 @@ public class RestitutionService {
         }
 
         BigDecimal soldeAvant = client.getSoldeEpargne();
-        restitution.setSignatureClient(signatureClient);
+        restitution.setSignatureClient(SignatureUtil.compress(signatureClient));
         restitution.setValidee(true);
         restitution = restitutionRepository.save(restitution);
 
