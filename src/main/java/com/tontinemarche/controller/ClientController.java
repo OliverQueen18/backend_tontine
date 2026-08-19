@@ -53,6 +53,13 @@ public class ClientController {
         return clientService.desactiver(id, motif);
     }
 
+    @PatchMapping("/{id}/reactiver")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN_AGENCE')")
+    public ClientDto reactiver(@PathVariable Long id, @RequestBody(required = false) Map<String, String> payload) {
+        String motif = payload != null ? payload.get("motif") : null;
+        return clientService.reactiver(id, motif);
+    }
+
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN_AGENCE', 'AGENT')")
     public Map<String, String> supprimer(@PathVariable Long id) {

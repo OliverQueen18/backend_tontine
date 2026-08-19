@@ -157,11 +157,47 @@ public class ClientService {
                     str(client.getMontantJournalier()), str(dto.getMontantJournalier()));
             client.setMontantJournalier(dto.getMontantJournalier());
         }
+        Agent agentPourValidation = client.getAgent();
+        if (dto.getAgentId() != null) {
+            Agent nouvelAgent = agentService.getEntity(dto.getAgentId());
+            if (client.getAgence() != null && nouvelAgent.getAgence() != null
+                    && !client.getAgence().getId().equals(nouvelAgent.getAgence().getId())) {
+                throw ApiException.badRequest("L'agent n'appartient pas à la même agence que le client");
+            }
+            agentPourValidation = nouvelAgent;
+        }
+        Long marcheIdCible = dto.getMarcheId() != null ? dto.getMarcheId()
+                : (client.getMarche() != null ? client.getMarche().getId() : null);
+        boolean marcheChange = dto.getMarcheId() != null
+                && (client.getMarche() == null || !dto.getMarcheId().equals(client.getMarche().getId()));
+        boolean agentChange = dto.getAgentId() != null
+                && (client.getAgent() == null || !dto.getAgentId().equals(client.getAgent().getId()));
+        if (agentPourValidation != null && (marcheChange || agentChange)) {
+            validateAgentMarche(agentPourValidation, marcheIdCible);
+        }
         if (dto.getMarcheId() != null) {
             Marche marche = marcheRepository.findById(dto.getMarcheId())
                     .orElseThrow(() -> ApiException.notFound("Marché introuvable"));
             trackChange(client, "marche", labelMarche(client.getMarche()), labelMarche(marche));
             client.setMarche(marche);
+        }
+        if (dto.getAgentId() != null) {
+            Agent nouvelAgent = agentPourValidation;
+            Agent agentSource = client.getAgent();
+            if (nouvelAgent != null && (agentSource == null || !agentSource.getId().equals(nouvelAgent.getId()))) {
+                affectationClientRepository.save(AffectationClient.builder()
+                        .client(client)
+                        .agentSource(agentSource)
+                        .agentCible(nouvelAgent)
+                        .dateAffectation(LocalDate.now())
+                        .motif("Modification du client")
+                        .effectuePar(currentUser())
+                        .build());
+                trackChange(client, "agent",
+                        agentSource != null ? agentSource.getNomComplet() : null,
+                        nouvelAgent.getNomComplet());
+                client.setAgent(nouvelAgent);
+            }
         }
         if (dto.getStatut() != null && dto.getStatut() != client.getStatut()) {
             trackChange(client, "statut", client.getStatut().name(), dto.getStatut().name());
@@ -195,6 +231,22 @@ public class ClientService {
         logHistorique(client, "DESACTIVATION", "statut", StatutEntity.ACTIF.name(),
                 StatutEntity.INACTIF.name(), details);
         auditService.log("DESACTIVATION", "Client", client.getCode(), details, client.getAgence().getId());
+        return toDtoWithCommission(client);
+    }
+
+    @Transactional
+    public ClientDto reactiver(Long id, String motif) {
+        Client client = getEntity(id);
+        assertCanManageClient(client);
+        if (client.getStatut() == StatutEntity.ACTIF) {
+            throw ApiException.badRequest("Le client est déjà actif");
+        }
+        client.setStatut(StatutEntity.ACTIF);
+        client = clientRepository.save(client);
+        String details = motif != null && !motif.isBlank() ? motif.trim() : "Réactivation du client";
+        logHistorique(client, "REACTIVATION", "statut", StatutEntity.INACTIF.name(),
+                StatutEntity.ACTIF.name(), details);
+        auditService.log("REACTIVATION", "Client", client.getCode(), details, client.getAgence().getId());
         return toDtoWithCommission(client);
     }
 

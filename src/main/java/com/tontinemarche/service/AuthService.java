@@ -13,8 +13,11 @@ import com.tontinemarche.security.JwtService;
 import com.tontinemarche.security.UserPrincipal;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.DisabledException;
+import org.springframework.security.authentication.LockedException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -34,9 +37,18 @@ public class AuthService {
 
     @Transactional
     public AuthResponse login(LoginRequest request) {
-        Authentication authentication = authenticationManager.authenticate(
-                new UsernamePasswordAuthenticationToken(request.getUsername(), request.getPassword())
-        );
+        Authentication authentication;
+        try {
+            authentication = authenticationManager.authenticate(
+                    new UsernamePasswordAuthenticationToken(
+                            request.getUsername() != null ? request.getUsername().trim() : "",
+                            request.getPassword())
+            );
+        } catch (DisabledException | LockedException ex) {
+            throw ApiException.unauthorized("Compte désactivé");
+        } catch (AuthenticationException ex) {
+            throw ApiException.unauthorized("Identifiants incorrects");
+        }
         UserPrincipal principal = (UserPrincipal) authentication.getPrincipal();
         Utilisateur user = utilisateurRepository.findByUsername(principal.getUsername())
                 .orElseThrow(() -> ApiException.notFound("Utilisateur introuvable"));

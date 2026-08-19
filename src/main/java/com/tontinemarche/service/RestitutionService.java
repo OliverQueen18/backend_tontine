@@ -249,7 +249,6 @@ public class RestitutionService {
         restitution = restitutionRepository.save(restitution);
 
         client.setSoldeEpargne(BigDecimal.ZERO);
-        client.setStatut(StatutEntity.INACTIF);
         clientRepository.save(client);
 
         caisseService.enregistrerMouvement(
