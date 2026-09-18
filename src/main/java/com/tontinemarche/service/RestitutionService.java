@@ -295,6 +295,62 @@ public class RestitutionService {
         return EntityMapper.toDto(restitution);
     }
 
+    @Transactional
+    public RestitutionDto recalculer(Long restitutionId) {
+        Restitution restitution = getAccessibleRestitution(restitutionId);
+        if (restitution.isValidee()) {
+            throw ApiException.badRequest(
+                    "Cette restitution est déjà finalisée. Impossible de la recalculer.");
+        }
+
+        Client client = restitution.getClient();
+        BigDecimal total = epargneDuCycle(client);
+        if (total.compareTo(BigDecimal.ZERO) <= 0) {
+            throw ApiException.badRequest("Aucune épargne à restituer pour ce cycle");
+        }
+
+        BigDecimal avantTotal = restitution.getTotalCollecte();
+        var commissionCalc = commissionGrilleService.calculerCommissionRestitution(
+                client.getAgence().getId(),
+                client.getMontantJournalier(),
+                total);
+        BigDecimal commission = commissionCalc.montantCommission();
+
+        restitution.setTotalCollecte(total);
+        restitution.setCommissionCalculee(commission);
+        restitution.setCommission(commission);
+        restitution.setMontantNet(total.subtract(commission));
+        restitution = restitutionRepository.save(restitution);
+
+        auditService.log("RESTITUTION_RECALCUL", "Restitution", restitution.getNumeroRecu(),
+                "Total " + avantTotal + " → " + total + " FCFA — " + client.getCode(),
+                client.getAgence().getId());
+        logClientHistorique(client, "RESTITUTION_RECALCUL", "totalCollecte",
+                str(avantTotal), str(total),
+                "Montant recalculé sur le cycle en cours — net " + restitution.getMontantNet() + " FCFA");
+
+        return EntityMapper.toDto(restitution);
+    }
+
+    @Transactional
+    public void annuler(Long restitutionId) {
+        Restitution restitution = getAccessibleRestitution(restitutionId);
+        if (restitution.isValidee()) {
+            throw ApiException.badRequest(
+                    "Cette restitution est déjà finalisée. Impossible de l'annuler.");
+        }
+
+        Client client = restitution.getClient();
+        String numero = restitution.getNumeroRecu();
+        auditService.log("RESTITUTION_ANNUL", "Restitution", numero,
+                "Annulation avant signature — " + client.getCode(),
+                client.getAgence().getId());
+        logClientHistorique(client, "RESTITUTION_ANNUL", null,
+                str(restitution.getTotalCollecte()), null,
+                "Restitution " + numero + " annulée avant signature");
+        restitutionRepository.delete(restitution);
+    }
+
     @Transactional(readOnly = true)
     public RestitutionDto findById(Long id) {
         return EntityMapper.toDto(getAccessibleRestitution(id));

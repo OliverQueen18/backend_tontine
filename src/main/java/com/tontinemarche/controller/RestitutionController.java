@@ -65,6 +65,18 @@ public class RestitutionController {
         return restitutionService.finaliserSignature(id, signature, commission);
     }
 
+    @PostMapping("/{id}/recalculer")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN_AGENCE', 'AGENT', 'CAISSIER')")
+    public RestitutionDto recalculer(@PathVariable Long id) {
+        return restitutionService.recalculer(id);
+    }
+
+    @PostMapping("/{id}/annuler")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN_AGENCE', 'AGENT', 'CAISSIER')")
+    public void annuler(@PathVariable Long id) {
+        restitutionService.annuler(id);
+    }
+
     @GetMapping("/{id}")
     @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN_AGENCE', 'AGENT', 'CAISSIER')")
     public RestitutionDto findById(@PathVariable Long id) {
