@@ -8,6 +8,7 @@ import org.springframework.data.repository.query.Param;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 
 public interface RestitutionRepository extends JpaRepository<Restitution, Long> {
     List<Restitution> findByClientIdOrderByDateHeureDesc(Long clientId);
@@ -20,6 +21,8 @@ public interface RestitutionRepository extends JpaRepository<Restitution, Long> 
     List<Restitution> findByAgenceIdAndValideeFalseOrderByDateHeureDesc(Long agenceId);
     List<Restitution> findByValideeFalseOrderByDateHeureDesc();
     boolean existsByClientIdAndValideeFalse(Long clientId);
+
+    Optional<Restitution> findFirstByClientIdAndValideeTrueOrderByDateHeureDesc(Long clientId);
 
     @Query("SELECT COALESCE(SUM(r.commission), 0) FROM Restitution r WHERE r.dateHeure BETWEEN :debut AND :fin")
     BigDecimal sumCommissionBetween(@Param("debut") LocalDateTime debut, @Param("fin") LocalDateTime fin);

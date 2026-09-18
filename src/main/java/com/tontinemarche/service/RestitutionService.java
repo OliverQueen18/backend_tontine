@@ -62,7 +62,7 @@ public class RestitutionService {
         } else {
             list = restitutionRepository.findAll();
         }
-        return list.stream().map(EntityMapper::toDto).toList();
+        return list.stream().map(this::toDtoAvecCycle).toList();
     }
 
     @Transactional(readOnly = true)
@@ -76,7 +76,7 @@ public class RestitutionService {
         if (principal.getRole() == RoleType.SUPER_ADMIN) {
             return restitutionRepository.findByValideeFalseOrderByDateHeureDesc()
                     .stream()
-                    .map(EntityMapper::toDto)
+                    .map(this::toDtoAvecCycle)
                     .toList();
         }
 
@@ -88,7 +88,7 @@ public class RestitutionService {
             // Admin agence : file d'attente de toute l'agence (pas seulement son profil collecteur)
             return restitutionRepository.findByAgenceIdAndValideeFalseOrderByDateHeureDesc(agenceId)
                     .stream()
-                    .map(EntityMapper::toDto)
+                    .map(this::toDtoAvecCycle)
                     .toList();
         }
 
@@ -100,7 +100,7 @@ public class RestitutionService {
                 .orElseThrow(() -> ApiException.forbidden("Profil collecteur introuvable"));
         return restitutionRepository.findByClient_Agent_IdAndValideeFalseOrderByDateHeureDesc(agent.getId())
                 .stream()
-                .map(EntityMapper::toDto)
+                .map(this::toDtoAvecCycle)
                 .toList();
     }
 
@@ -109,10 +109,7 @@ public class RestitutionService {
         Client client = clientRepository.findById(clientId)
                 .orElseThrow(() -> ApiException.notFound("Client introuvable"));
 
-        BigDecimal total = collecteRepository.sumByClient(clientId);
-        if (total == null) {
-            total = BigDecimal.ZERO;
-        }
+        BigDecimal total = epargneDuCycle(client);
         var commissionCalc = commissionGrilleService.calculerCommissionRestitution(
                 client.getAgence().getId(),
                 client.getMontantJournalier(),
@@ -167,8 +164,8 @@ public class RestitutionService {
             throw ApiException.conflict("Une restitution est déjà en attente de signature pour ce client");
         }
 
-        BigDecimal total = collecteRepository.sumByClient(client.getId());
-        if (total == null || total.compareTo(BigDecimal.ZERO) <= 0) {
+        BigDecimal total = epargneDuCycle(client);
+        if (total.compareTo(BigDecimal.ZERO) <= 0) {
             throw ApiException.badRequest("Aucune épargne à restituer");
         }
 
@@ -214,6 +211,7 @@ public class RestitutionService {
         if (restitution.isValidee()) {
             throw ApiException.badRequest("Cette restitution est déjà finalisée");
         }
+        refreshMontantCycle(restitution);
         BigDecimal avant = restitution.getCommission();
         applyCommissionAmount(restitution, commission);
         restitution = restitutionRepository.save(restitution);
@@ -235,6 +233,8 @@ public class RestitutionService {
         if (restitution.isValidee()) {
             throw ApiException.badRequest("Cette restitution est déjà finalisée");
         }
+
+        refreshMontantCycle(restitution);
 
         Client client = restitution.getClient();
         caisseService.requireCaisseOuverte(client.getAgence().getId());
@@ -375,6 +375,46 @@ public class RestitutionService {
             throw ApiException.forbidden("Ce client n'est pas dans votre portefeuille");
         }
         return restitution;
+    }
+
+    private RestitutionDto toDtoAvecCycle(Restitution restitution) {
+        refreshMontantCycle(restitution);
+        return EntityMapper.toDto(restitution);
+    }
+
+    /**
+     * Recalcule le total d'une restitution non signée pour exclure les cycles déjà rendus.
+     */
+    private void refreshMontantCycle(Restitution restitution) {
+        if (restitution.isValidee()) {
+            return;
+        }
+        BigDecimal total = epargneDuCycle(restitution.getClient());
+        restitution.setTotalCollecte(total);
+        BigDecimal commission = restitution.getCommission() != null ? restitution.getCommission() : BigDecimal.ZERO;
+        if (commission.compareTo(total) > 0) {
+            commission = total;
+            restitution.setCommission(commission);
+        }
+        restitution.setMontantNet(total.subtract(commission));
+    }
+
+    /**
+     * Épargne encore due : collectes du cycle en cours (après la dernière restitution validée).
+     * Le solde client sert de plancher si l'historique des collectes est incomplet.
+     */
+    private BigDecimal epargneDuCycle(Client client) {
+        Restitution derniereValidee = restitutionRepository
+                .findFirstByClientIdAndValideeTrueOrderByDateHeureDesc(client.getId())
+                .orElse(null);
+        BigDecimal totalCycle = (derniereValidee != null && derniereValidee.getDateHeure() != null)
+                ? collecteRepository.sumByClientSince(client.getId(), derniereValidee.getDateHeure())
+                : collecteRepository.sumByClient(client.getId());
+        if (totalCycle == null) {
+            totalCycle = BigDecimal.ZERO;
+        }
+        BigDecimal solde = client.getSoldeEpargne() != null ? client.getSoldeEpargne() : BigDecimal.ZERO;
+        return totalCycle.max(solde);
     }
 
     private void applyCommissionAmount(Restitution restitution, BigDecimal commission) {

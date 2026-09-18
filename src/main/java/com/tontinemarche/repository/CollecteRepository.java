@@ -7,6 +7,7 @@ import org.springframework.data.repository.query.Param;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 
 public interface CollecteRepository extends JpaRepository<Collecte, Long> {
@@ -43,6 +44,12 @@ public interface CollecteRepository extends JpaRepository<Collecte, Long> {
 
     @Query("SELECT COALESCE(SUM(c.montantRecu), 0) FROM Collecte c WHERE c.client.id = :clientId AND c.annulee = false")
     BigDecimal sumByClient(@Param("clientId") Long clientId);
+
+    @Query("""
+            SELECT COALESCE(SUM(c.montantRecu), 0) FROM Collecte c
+            WHERE c.client.id = :clientId AND c.annulee = false AND c.dateHeure > :depuis
+            """)
+    BigDecimal sumByClientSince(@Param("clientId") Long clientId, @Param("depuis") LocalDateTime depuis);
 
     long countByDateCollecte(LocalDate date);
     long countBySignatureClientIsNotNull();
