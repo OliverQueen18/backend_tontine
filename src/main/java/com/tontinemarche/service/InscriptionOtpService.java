@@ -56,10 +56,6 @@ public class InscriptionOtpService {
                 "Tontine Marché — Vérification de votre e-mail",
                 buildOtpEmail(name, otp, otpExpirationMinutes)
         );
-        if (!emailSent) {
-            otpRepository.delete(entity);
-            throw ApiException.badRequest("Impossible d'envoyer le code OTP par e-mail. Vérifiez la configuration mail.");
-        }
 
         boolean smsSent = false;
         String maskedPhone = null;
@@ -74,9 +70,19 @@ public class InscriptionOtpService {
             }
         }
 
-        String message = smsSent
-                ? "Un code OTP a été envoyé par e-mail et par SMS."
-                : "Un code OTP a été envoyé à votre adresse e-mail.";
+        if (!emailSent && !smsSent) {
+            otpRepository.delete(entity);
+            throw ApiException.badRequest("Impossible d'envoyer le code OTP. Vérifiez la configuration e-mail/SMS.");
+        }
+
+        String message;
+        if (emailSent && smsSent) {
+            message = "Un code OTP a été envoyé par e-mail et par SMS.";
+        } else if (smsSent) {
+            message = "Le service e-mail est temporairement indisponible : le code OTP a été envoyé par SMS.";
+        } else {
+            message = "Un code OTP a été envoyé à votre adresse e-mail.";
+        }
 
         return OtpResponse.builder()
                 .message(message)
