@@ -51,11 +51,15 @@ public class InscriptionOtpService {
         String name = request.getNomComplet() != null && !request.getNomComplet().isBlank()
                 ? request.getNomComplet().trim() : "Futur partenaire";
 
-        emailService.send(
+        boolean emailSent = emailService.sendSynchronously(
                 email,
                 "Tontine Marché — Vérification de votre e-mail",
                 buildOtpEmail(name, otp, otpExpirationMinutes)
         );
+        if (!emailSent) {
+            otpRepository.delete(entity);
+            throw ApiException.badRequest("Impossible d'envoyer le code OTP par e-mail. Vérifiez la configuration mail.");
+        }
 
         boolean smsSent = false;
         String maskedPhone = null;

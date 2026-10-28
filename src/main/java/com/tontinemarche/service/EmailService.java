@@ -27,12 +27,17 @@ public class EmailService {
 
     @Async
     public void send(String to, String subject, String htmlBody) {
+        sendSynchronously(to, subject, htmlBody);
+    }
+
+    /** Envoi synchrone utilisé lorsque la réponse doit confirmer une livraison critique. */
+    public boolean sendSynchronously(String to, String subject, String htmlBody) {
         if (!enabled) {
             log.warn("Envoi mail DÉSACTIVÉ (MAIL_ENABLED=false) — destinataire={} sujet={}", to, subject);
-            return;
+            return false;
         }
         if (to == null || to.isBlank()) {
-            return;
+            return false;
         }
 
         try {
@@ -44,8 +49,10 @@ public class EmailService {
             helper.setText(htmlBody, true);
             mailSender.send(message);
             log.info("Email envoyé à {} — {}", to, subject);
+            return true;
         } catch (Exception ex) {
             log.error("Échec envoi email à {} — {}: {}", to, subject, ex.getMessage());
+            return false;
         }
     }
 }
