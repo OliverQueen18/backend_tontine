@@ -207,7 +207,11 @@ public class AgenceService {
                 WHERE agence_id = ?
                 """, id);
         jdbcTemplate.update("DELETE FROM depenses WHERE agence_id = ?", id);
-        jdbcTemplate.update("DELETE FROM collectes WHERE agence_id = ?", id);
+        jdbcTemplate.update("""
+                DELETE FROM collectes
+                WHERE agence_id = ?
+                   OR agent_id IN (SELECT id FROM agents WHERE agence_id = ?)
+                """, id, id);
         jdbcTemplate.update("""
                 UPDATE restitutions SET caissier_id = NULL WHERE agence_id = ?
                 """, id);
