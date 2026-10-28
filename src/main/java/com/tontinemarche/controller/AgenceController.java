@@ -44,6 +44,12 @@ public class AgenceController {
         return agenceService.desactiver(id);
     }
 
+    @PatchMapping("/{id}/activer")
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    public AgenceDto activer(@PathVariable Long id) {
+        return agenceService.activer(id);
+    }
+
     @DeleteMapping("/{id}")
     @PreAuthorize("hasRole('SUPER_ADMIN')")
     public void supprimer(@PathVariable Long id) {

@@ -131,6 +131,14 @@ public class AgenceService {
      * (flag agence + bascule individuelle des clients pour cohérence UI).
      */
     @Transactional
+    public AgenceDto activer(Long id) {
+        Agence agence = getEntity(id);
+        agence.setStatut(StatutEntity.ACTIF);
+        auditService.log("ACTIVATION", "Agence", agence.getCode(), null, agence.getId());
+        return toDto(agenceRepository.save(agence));
+    }
+
+    @Transactional
     public AgenceDto setSmsPourTousClients(Long id, boolean enabled) {
         assertCanAccessAgence(id);
         Agence agence = getEntity(id);
